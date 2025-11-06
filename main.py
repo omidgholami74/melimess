@@ -172,7 +172,6 @@ class DataProcessor(QMainWindow):
         if not rows:
             return
 
-        # Flatten all values into a single list
         flat_values = []
         for row in rows:
             flat_values.extend([v.strip() for v in row if v.strip()])
@@ -180,13 +179,11 @@ class DataProcessor(QMainWindow):
         if not flat_values:
             return
 
-        # Determine starting row
         current = self.table.currentIndex()
         start_row = current.row() if current.isValid() and current.column() == 2 else 0
-        col_idx = 2  # Modified column
+        col_idx = 2
         num_rows = self.table.rowCount()
 
-        # Paste values starting from start_row
         for i, val_str in enumerate(flat_values):
             row = start_row + i
             if row >= num_rows:
@@ -310,7 +307,7 @@ class DataProcessor(QMainWindow):
                 new_val = (original * rand_factor) + offset
                 if apply_ratio_filled or modified is None:
                     new_val *= ratio
-                new_val = round(new_val, 2)  # Round to 2 decimal places
+                new_val = round(new_val, 2)
                 self.current_column_data.at[i, 'Modified'] = new_val
                 item = self.table.item(i, 2)
                 if not item:
@@ -323,36 +320,48 @@ class DataProcessor(QMainWindow):
         if not selected_items:
             return
         
-        selected_rows = set(item.row() for item in selected_items if item.column() == 2)
-        values = [self.current_column_data.at[row, 'Original'] for row in selected_rows if self.current_column_data.at[row, 'Original'] is not None and isinstance(self.current_column_data.at[row, 'Original'], (int, float))]
+        # Get all selected rows (from any column)
+        selected_rows = set(item.row() for item in selected_items)
+        
+        # Get Original values from selected rows
+        values = [self.current_column_data.at[row, 'Original'] for row in selected_rows 
+                 if self.current_column_data.at[row, 'Original'] is not None and isinstance(self.current_column_data.at[row, 'Original'], (int, float))]
         
         if not values:
             return
         
-        # Highlight all selected Modified cells as yellow initially
-        for row in selected_rows:
-            item = self.table.item(row, 2)
-            if item:
-                item.setBackground(QBrush(QColor("yellow")))
-        
         mean_val = sum(values) / len(values)
         dup_range = float(self.dup_range_edit.text())
-        
-        # Check each Original value against mean and set Modified cell to red if outlier
+
+        # Light yellow background (pastel)
+        light_yellow = QColor(255, 255, 150)  # Soft yellow
+        light_red = QColor(255, 180, 180)     # Soft red
+
+        # Highlight entire row: Fixed + Original + Modified
+        for row in selected_rows:
+            for col in [0, 1, 2]:  # Fixed, Original, Modified
+                item = self.table.item(row, col)
+                if item:
+                    item.setBackground(QBrush(light_yellow))
+
+        # Check for outliers in Original column
         for row in selected_rows:
             val = self.current_column_data.at[row, 'Original']
             if val is not None and isinstance(val, (int, float)) and abs(val - mean_val) > mean_val * dup_range:
-                item = self.table.item(row, 2)
-                if item:
-                    item.setBackground(QBrush(QColor("red")))
+                # Highlight entire row in light red
+                for col in [0, 1, 2]:
+                    item = self.table.item(row, col)
+                    if item:
+                        item.setBackground(QBrush(light_red))
 
     def fix_duplicates(self):
         selected_items = self.table.selectedItems()
         if not selected_items:
             return
         
-        selected_rows = set(item.row() for item in selected_items if item.column() == 2)
-        values = [self.current_column_data.at[row, 'Original'] for row in selected_rows if self.current_column_data.at[row, 'Original'] is not None and isinstance(self.current_column_data.at[row, 'Original'], (int, float))]
+        selected_rows = set(item.row() for item in selected_items)
+        values = [self.current_column_data.at[row, 'Original'] for row in selected_rows 
+                 if self.current_column_data.at[row, 'Original'] is not None and isinstance(self.current_column_data.at[row, 'Original'], (int, float))]
         if not values:
             return
         mean_val = sum(values) / len(values)
@@ -362,14 +371,18 @@ class DataProcessor(QMainWindow):
         
         for row in selected_rows:
             rand_factor = random.uniform(min_val, max_val)
-            new_val = round(mean_val * rand_factor, 2)  # Round to 2 decimal places
+            new_val = round(mean_val * rand_factor, 2)
             self.current_column_data.at[row, 'Modified'] = new_val
             item = self.table.item(row, 2)
             if not item:
                 item = QTableWidgetItem()
                 self.table.setItem(row, 2, item)
             item.setText(str(new_val))
-            item.setBackground(QBrush(QColor("white")))
+            # Reset background to white
+            for col in [0, 1, 2]:
+                bg_item = self.table.item(row, col)
+                if bg_item:
+                    bg_item.setBackground(QBrush(QColor("white")))
 
     def select_crm_row(self):
         selected_items = self.table.selectedItems()
@@ -395,7 +408,7 @@ class DataProcessor(QMainWindow):
             val = self.current_column_data.at[i, 'Modified']
             if val is not None and abs(val - crm_901_val) > crm_901_val * crm_range:
                 item = self.table.item(i, 2)
-                item.setBackground(QBrush(QColor("red")))
+                item.setBackground(QBrush(QColor(255, 180, 180)))
 
     def fix_crm_differences(self):
         if self.crm_row is None:
@@ -410,9 +423,9 @@ class DataProcessor(QMainWindow):
         
         for i in range(len(self.current_column_data)):
             item = self.table.item(i, 2)
-            if item and item.background().color() == QColor("red"):
+            if item and item.background().color() == QColor(255, 180, 180):
                 rand_factor = random.uniform(min_val, max_val)
-                new_val = round(crm_901_val * rand_factor, 2)  # Round to 2 decimal places
+                new_val = round(crm_901_val * rand_factor, 2)
                 self.current_column_data.at[i, 'Modified'] = new_val
                 item.setText(str(new_val))
                 item.setBackground(QBrush(QColor("white")))
