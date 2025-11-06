@@ -28,10 +28,17 @@ class DataProcessor(QMainWindow):
         self.load_button.clicked.connect(self.load_file)
         left_layout.addWidget(self.load_button)
 
+        nav_layout = QHBoxLayout()
+        self.prev_column_button = QPushButton("Previous Column")
+        self.prev_column_button.clicked.connect(self.prev_column)
+        self.prev_column_button.setEnabled(False)
+        nav_layout.addWidget(self.prev_column_button)
+
         self.next_column_button = QPushButton("Next Column")
         self.next_column_button.clicked.connect(self.next_column)
-        left_layout.addWidget(self.next_column_button)
+        nav_layout.addWidget(self.next_column_button)
         self.next_column_button.setEnabled(False)
+        left_layout.addLayout(nav_layout)
 
         # Control panel for filling
         control_layout = QVBoxLayout()  # Changed to vertical for better UI
@@ -134,7 +141,7 @@ class DataProcessor(QMainWindow):
         # Data storage
         self.df = None
         self.reserved_rows = {}
-        self.processed_columns = []  # List of (col_index, modified_values)
+        self.processed_columns = {}  # Dict: col_index -> modified_values
         self.current_column_index = 0
         self.current_column_data = None
         self.fixed_column = None
@@ -180,16 +187,16 @@ class DataProcessor(QMainWindow):
         return cell
 
     def load_column(self, col_index):
-        if col_index >= len(self.processing_df.columns):
-            QMessageBox.information(self, "Done", "All columns processed.")
+        if col_index < 1 or col_index >= len(self.processing_df.columns):
             return
         
         col_data = self.processing_df.iloc[:, col_index].values
         num_rows = len(self.fixed_column)
         
+        modified = self.processed_columns.get(col_index, [None] * num_rows)
         self.current_column_data = pd.DataFrame({
             'Original': col_data,
-            'Modified': [None] * num_rows
+            'Modified': modified
         })
         
         self.table.setRowCount(num_rows)
@@ -197,14 +204,42 @@ class DataProcessor(QMainWindow):
         self.table.setHorizontalHeaderLabels(['Fixed', 'Original', 'Modified'])
         
         for i in range(num_rows):
-            self.table.setItem(i, 0, QTableWidgetItem(str(self.fixed_column[i])))
-            self.table.setItem(i, 1, QTableWidgetItem(str(self.current_column_data.at[i, 'Original'])))
+            fixed_item = QTableWidgetItem(str(self.fixed_column[i]))
+            fixed_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)  # Not editable
+            self.table.setItem(i, 0, fixed_item)
+            
+            orig_item = QTableWidgetItem(str(self.current_column_data.at[i, 'Original']))
+            orig_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)  # Not editable
+            self.table.setItem(i, 1, orig_item)
+            
+            mod_val = self.current_column_data.at[i, 'Modified']
+            mod_item = QTableWidgetItem(str(mod_val) if mod_val is not None else "")
+            mod_item.setFlags(Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+            self.table.setItem(i, 2, mod_item)
         
         self.current_column_index = col_index
+        self.prev_column_button.setEnabled(col_index > 1)
+        self.next_column_button.setEnabled(col_index < len(self.processing_df.columns) - 1)
 
     def next_column(self):
-        self.processed_columns.append((self.current_column_index, self.current_column_data['Modified'].values))
+        self.save_current_modified()
         self.load_column(self.current_column_index + 1)
+
+    def prev_column(self):
+        self.save_current_modified()
+        self.load_column(self.current_column_index - 1)
+
+    def save_current_modified(self):
+        modified = []
+        for i in range(self.table.rowCount()):
+            item = self.table.item(i, 2)
+            text = item.text().strip() if item else ""
+            try:
+                val = float(text) if text else None
+            except ValueError:
+                val = text if text else None
+            modified.append(val)
+        self.processed_columns[self.current_column_index] = modified
 
     def fill_empty_cells(self):
         min_val = float(self.min_edit.text())
@@ -226,7 +261,8 @@ class DataProcessor(QMainWindow):
                 if apply_ratio_filled or modified is None:
                     new_val *= ratio
                 self.current_column_data.at[i, 'Modified'] = new_val
-                self.table.setItem(i, 2, QTableWidgetItem(str(new_val)))
+                item = self.table.item(i, 2)
+                item.setText(str(new_val))
 
     def check_duplicates(self):
         selected_items = self.table.selectedItems()
@@ -238,6 +274,11 @@ class DataProcessor(QMainWindow):
         
         if not values:
             return
+        
+        # Highlight selected as yellow
+        for row in selected_rows:
+            item = self.table.item(row, 2)
+            item.setBackground(QBrush(QColor("yellow")))
         
         mean_val = sum(values) / len(values)
         dup_range = float(self.dup_range_edit.text())
@@ -266,8 +307,8 @@ class DataProcessor(QMainWindow):
             rand_factor = random.uniform(min_val, max_val)
             new_val = mean_val * rand_factor
             self.current_column_data.at[row, 'Modified'] = new_val
-            self.table.setItem(row, 2, QTableWidgetItem(str(new_val)))
             item = self.table.item(row, 2)
+            item.setText(str(new_val))
             item.setBackground(QBrush(QColor("white")))
 
     def select_crm_row(self):
@@ -312,7 +353,7 @@ class DataProcessor(QMainWindow):
                 rand_factor = random.uniform(min_val, max_val)
                 new_val = crm_901_val * rand_factor
                 self.current_column_data.at[i, 'Modified'] = new_val
-                self.table.setItem(i, 2, QTableWidgetItem(str(new_val)))
+                item.setText(str(new_val))
                 item.setBackground(QBrush(QColor("white")))
 
     def apply_limits(self):
@@ -330,15 +371,17 @@ class DataProcessor(QMainWindow):
                 else:
                     new_val = val
                 self.current_column_data.at[i, 'Modified'] = new_val
-                self.table.setItem(i, 2, QTableWidgetItem(str(new_val)))
+                item = self.table.item(i, 2)
+                item.setText(str(new_val))
 
     def finalize_data(self):
+        self.save_current_modified()
         if len(self.processed_columns) != (len(self.processing_df.columns) - 1):
             QMessageBox.warning(self, "Error", "Process all columns first.")
             return
         
         # Apply processed columns, skipping first column
-        for col_index, col_data in self.processed_columns:
+        for col_index, col_data in self.processed_columns.items():
             self.processing_df.iloc[:, col_index] = col_data
         
         # Reinsert reserved rows
