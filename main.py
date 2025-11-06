@@ -6,8 +6,8 @@ from PyQt6.QtWidgets import (
     QPushButton, QFileDialog, QTableWidget, QTableWidgetItem,
     QLineEdit, QLabel, QCheckBox, QMessageBox, QSplitter
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QBrush
+from PyQt6.QtCore import Qt, QMimeData
+from PyQt6.QtGui import QColor, QBrush, QKeySequence
 
 class DataProcessor(QMainWindow):
     def __init__(self):
@@ -41,7 +41,7 @@ class DataProcessor(QMainWindow):
         left_layout.addLayout(nav_layout)
 
         # Control panel for filling
-        control_layout = QVBoxLayout()  # Changed to vertical for better UI
+        control_layout = QVBoxLayout()
         control_layout.addWidget(QLabel("Fill Controls:"))
         min_max_layout = QHBoxLayout()
         min_max_layout.addWidget(QLabel("Min:"))
@@ -127,26 +127,82 @@ class DataProcessor(QMainWindow):
         self.finalize_button.clicked.connect(self.finalize_data)
         left_layout.addWidget(self.finalize_button)
 
-        left_layout.addStretch()  # Push content to top
+        left_layout.addStretch()
 
-        # Splitter for resizable panels
+        # Splitter
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(left_panel)
         self.table = QTableWidget()
+        self.table.setEditTriggers(QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.AnyKeyPressed)
+        self.table.setSelectionMode(QTableWidget.SelectionMode.ContiguousSelection)
         splitter.addWidget(self.table)
-        splitter.setSizes([300, 900])  # Initial sizes: left 300px, right 900px
+        splitter.setSizes([300, 900])
 
         main_layout.addWidget(splitter)
 
-        # Data storage
+        # Data
         self.df = None
         self.reserved_rows = {}
-        self.processed_columns = {}  # Dict: col_index -> modified_values
+        self.processed_columns = {}
         self.current_column_index = 0
         self.current_column_data = None
         self.fixed_column = None
         self.crm_row = None
-        self.crm_901 = {}  # Hardcoded CRM 901 data
+        self.crm_901 = [18267.30, 11648.70, 11416.50, 11280.40, 11322.10, 10765.30, 9095.06, 6273.45, 8994.77, 9797.85, 9803.39, 9959.60, 10553.30, 10484.60, 10183.60, 11909.60, 10976.70, 10962.00, 12918.10, 10035.60, 9265.05, 11652.10, 12520.20, 12584.60, 11720.20, 10161.40, 10931.30, 10729.50, 10235.60, 10530.40, 6040.80, 13430.70]
+
+        # Connect paste globally
+        self.installEventFilter(self)
+
+    def eventFilter(self, source, event):
+        if event.type() == event.Type.KeyPress:
+            key_event = event
+            if key_event.modifiers() == Qt.KeyboardModifier.ControlModifier and key_event.key() == Qt.Key.Key_V:
+                self.paste_from_clipboard()
+                return True
+        return super().eventFilter(source, event)
+
+    def paste_from_clipboard(self):
+        clipboard = QApplication.clipboard()
+        mime_data = clipboard.mimeData()
+        if not mime_data.hasText():
+            return
+
+        text = mime_data.text()
+        rows = [row.split('\t') for row in text.split('\n') if row.strip()]
+        if not rows:
+            return
+
+        # Flatten all values into a single list
+        flat_values = []
+        for row in rows:
+            flat_values.extend([v.strip() for v in row if v.strip()])
+        
+        if not flat_values:
+            return
+
+        # Determine starting row
+        current = self.table.currentIndex()
+        start_row = current.row() if current.isValid() and current.column() == 2 else 0
+        col_idx = 2  # Modified column
+        num_rows = self.table.rowCount()
+
+        # Paste values starting from start_row
+        for i, val_str in enumerate(flat_values):
+            row = start_row + i
+            if row >= num_rows:
+                break
+            try:
+                val = float(val_str)
+            except ValueError:
+                val = val_str
+            item = self.table.item(row, col_idx)
+            if not item:
+                item = QTableWidgetItem()
+                self.table.setItem(row, col_idx, item)
+            item.setText(str(val))
+            self.current_column_data.at[row, 'Modified'] = val
+
+        self.save_current_modified()
 
     def load_file(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Open File", "", "CSV/Excel (*.csv *.xlsx)")
@@ -156,7 +212,6 @@ class DataProcessor(QMainWindow):
             else:
                 self.df = pd.read_excel(file_path, header=None)
             
-            # Reserve rows 1,3,4,5,6 (0-indexed: 0,2,3,4,5)
             self.reserved_rows = {
                 0: self.df.iloc[0].copy(),
                 2: self.df.iloc[2].copy(),
@@ -165,18 +220,14 @@ class DataProcessor(QMainWindow):
                 5: self.df.iloc[5].copy()
             }
             
-            # Processing data starts from row 6 (index 6) onwards
             self.processing_df = self.df.iloc[6:].reset_index(drop=True)
             
-            # Clean cells like <2 or >2 to 2
             for col in self.processing_df.columns:
                 self.processing_df[col] = self.processing_df[col].apply(self.clean_cell)
             
-            # Fixed column is the first column (index 0)
             self.fixed_column = self.processing_df.iloc[:, 0].values
-            
             self.next_column_button.setEnabled(True)
-            self.load_column(1)  # Start from second column (index 1)
+            self.load_column(1)
 
     def clean_cell(self, cell):
         if isinstance(cell, str):
@@ -205,11 +256,11 @@ class DataProcessor(QMainWindow):
         
         for i in range(num_rows):
             fixed_item = QTableWidgetItem(str(self.fixed_column[i]))
-            fixed_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)  # Not editable
+            fixed_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
             self.table.setItem(i, 0, fixed_item)
             
             orig_item = QTableWidgetItem(str(self.current_column_data.at[i, 'Original']))
-            orig_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)  # Not editable
+            orig_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
             self.table.setItem(i, 1, orig_item)
             
             mod_val = self.current_column_data.at[i, 'Modified']
@@ -240,6 +291,7 @@ class DataProcessor(QMainWindow):
                 val = text if text else None
             modified.append(val)
         self.processed_columns[self.current_column_index] = modified
+        self.current_column_data['Modified'] = modified
 
     def fill_empty_cells(self):
         min_val = float(self.min_edit.text())
@@ -275,7 +327,6 @@ class DataProcessor(QMainWindow):
         if not values:
             return
         
-        # Highlight selected as yellow
         for row in selected_rows:
             item = self.table.item(row, 2)
             item.setBackground(QBrush(QColor("yellow")))
@@ -325,10 +376,10 @@ class DataProcessor(QMainWindow):
             QMessageBox.warning(self, "Error", "Select CRM row first.")
             return
         
-        col_name = self.processing_df.columns[self.current_column_index]
-        crm_901_val = self.crm_901.get(col_name, 0)
+        if self.current_column_index >= len(self.crm_901):
+            return
         
-        crm_val = self.current_column_data.at[self.crm_row, 'Modified']
+        crm_901_val = self.crm_901[self.current_column_index]
         crm_range = float(self.crm_range_edit.text())
         
         for i in range(len(self.current_column_data)):
@@ -341,9 +392,10 @@ class DataProcessor(QMainWindow):
         if self.crm_row is None:
             return
         
-        col_name = self.processing_df.columns[self.current_column_index]
-        crm_901_val = self.crm_901.get(col_name, 0)
+        if self.current_column_index >= len(self.crm_901):
+            return
         
+        crm_901_val = self.crm_901[self.current_column_index]
         min_val = float(self.min_edit.text())
         max_val = float(self.max_edit.text())
         
@@ -357,7 +409,7 @@ class DataProcessor(QMainWindow):
                 item.setBackground(QBrush(QColor("white")))
 
     def apply_limits(self):
-        limit_row = self.reserved_rows[3]  # Row 4 (0-index 3) for limits
+        limit_row = self.reserved_rows[3]
         col_index = self.current_column_index
         limit = limit_row[col_index] if not pd.isna(limit_row[col_index]) else 0
         
@@ -366,7 +418,7 @@ class DataProcessor(QMainWindow):
             if val is not None and isinstance(val, (int, float)):
                 if val < limit:
                     new_val = f"<{limit}"
-                elif val > limit * 10:  # Arbitrary, adjust as needed
+                elif val > limit * 10:
                     new_val = f">{limit}"
                 else:
                     new_val = val
@@ -380,20 +432,17 @@ class DataProcessor(QMainWindow):
             QMessageBox.warning(self, "Error", "Process all columns first.")
             return
         
-        # Apply processed columns, skipping first column
         for col_index, col_data in self.processed_columns.items():
             self.processing_df.iloc[:, col_index] = col_data
         
-        # Reinsert reserved rows
         full_df = pd.DataFrame(columns=self.df.columns, index=range(len(self.df)))
         full_df.iloc[0] = self.reserved_rows[0]
         full_df.iloc[2] = self.reserved_rows[2]
         full_df.iloc[3] = self.reserved_rows[3]
         full_df.iloc[4] = self.reserved_rows[4]
         full_df.iloc[5] = self.reserved_rows[5]
-        full_df.iloc[6:] = self.processing_df.values  # Use .values to avoid index issues
+        full_df.iloc[6:] = self.processing_df.values
         
-        # Save to file
         save_path, _ = QFileDialog.getSaveFileName(self, "Save File", "", "CSV (*.csv)")
         if save_path:
             full_df.to_csv(save_path, index=False, header=False)
