@@ -341,7 +341,7 @@ class DataProcessor(QMainWindow):
                 if item:
                     item.setBackground(QBrush(light_yellow))
 
-        # Then: mark outliers in red (only based on Original)
+        # Then: mark outliers in red (entire row)
         for row in selected_rows:
             val = self.current_column_data.at[row, 'Original']
             if val is not None and isinstance(val, (int, float)) and abs(val - mean_val) > mean_val * dup_range:
@@ -365,35 +365,32 @@ class DataProcessor(QMainWindow):
         min_val = float(self.min_edit.text())
         max_val = float(self.max_edit.text())
         
-        # Only fix cells that are currently red
         light_red = QColor(255, 180, 180)
-        light_green = QColor(180, 255, 180)  # Light green for fixed
+        light_green = QColor(180, 255, 180)
 
         for row in selected_rows:
-            # Check if row is red
-            item = self.table.item(row, 1)  # Original column
-            if item and item.background().color() == light_red:
-                # Fix only Modified
+            orig_item = self.table.item(row, 1)  # Original column
+            mod_item = self.table.item(row, 2)   # Modified column
+
+            if orig_item and orig_item.background().color() == light_red:
+                # Only fix if Original is red
                 rand_factor = random.uniform(min_val, max_val)
                 new_val = round(mean_val * rand_factor, 2)
                 self.current_column_data.at[row, 'Modified'] = new_val
-                mod_item = self.table.item(row, 2)
                 if not mod_item:
                     mod_item = QTableWidgetItem()
                     self.table.setItem(row, 2, mod_item)
                 mod_item.setText(str(new_val))
-                # Highlight fixed row in light green
-                for col in [0, 1, 2]:
-                    bg_item = self.table.item(row, col)
-                    if bg_item:
-                        bg_item.setBackground(QBrush(light_green))
+                # Keep Original and Fixed red, only Modified becomes green
+                self.table.item(row, 0).setBackground(QBrush(light_red))   # Fixed
+                self.table.item(row, 1).setBackground(QBrush(light_red))   # Original
+                mod_item.setBackground(QBrush(light_green))               # Modified
             else:
-                # For yellow rows: copy Original to Modified (if Modified is empty or None)
+                # For yellow rows: copy Original to Modified if empty
                 mod_val = self.current_column_data.at[row, 'Modified']
                 orig_val = self.current_column_data.at[row, 'Original']
                 if mod_val is None and orig_val is not None:
                     self.current_column_data.at[row, 'Modified'] = orig_val
-                    mod_item = self.table.item(row, 2)
                     if not mod_item:
                         mod_item = QTableWidgetItem()
                         self.table.setItem(row, 2, mod_item)
