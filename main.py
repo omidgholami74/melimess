@@ -324,25 +324,27 @@ class DataProcessor(QMainWindow):
             return
         
         selected_rows = set(item.row() for item in selected_items if item.column() == 2)
-        values = [self.current_column_data.at[row, 'Modified'] for row in selected_rows if self.current_column_data.at[row, 'Modified'] is not None]
+        values = [self.current_column_data.at[row, 'Original'] for row in selected_rows if self.current_column_data.at[row, 'Original'] is not None and isinstance(self.current_column_data.at[row, 'Original'], (int, float))]
         
         if not values:
             return
         
-        # Highlight selected rows as yellow
+        # Highlight all selected Modified cells as yellow initially
         for row in selected_rows:
             item = self.table.item(row, 2)
-            item.setBackground(QBrush(QColor("yellow")))
+            if item:
+                item.setBackground(QBrush(QColor("yellow")))
         
         mean_val = sum(values) / len(values)
         dup_range = float(self.dup_range_edit.text())
         
-        # Check for outliers and set to red
+        # Check each Original value against mean and set Modified cell to red if outlier
         for row in selected_rows:
-            val = self.current_column_data.at[row, 'Modified']
-            if val is not None and abs(val - mean_val) > mean_val * dup_range:
+            val = self.current_column_data.at[row, 'Original']
+            if val is not None and isinstance(val, (int, float)) and abs(val - mean_val) > mean_val * dup_range:
                 item = self.table.item(row, 2)
-                item.setBackground(QBrush(QColor("red")))
+                if item:
+                    item.setBackground(QBrush(QColor("red")))
 
     def fix_duplicates(self):
         selected_items = self.table.selectedItems()
@@ -350,7 +352,7 @@ class DataProcessor(QMainWindow):
             return
         
         selected_rows = set(item.row() for item in selected_items if item.column() == 2)
-        values = [self.current_column_data.at[row, 'Modified'] for row in selected_rows if self.current_column_data.at[row, 'Modified'] is not None]
+        values = [self.current_column_data.at[row, 'Original'] for row in selected_rows if self.current_column_data.at[row, 'Original'] is not None and isinstance(self.current_column_data.at[row, 'Original'], (int, float))]
         if not values:
             return
         mean_val = sum(values) / len(values)
@@ -363,6 +365,9 @@ class DataProcessor(QMainWindow):
             new_val = round(mean_val * rand_factor, 2)  # Round to 2 decimal places
             self.current_column_data.at[row, 'Modified'] = new_val
             item = self.table.item(row, 2)
+            if not item:
+                item = QTableWidgetItem()
+                self.table.setItem(row, 2, item)
             item.setText(str(new_val))
             item.setBackground(QBrush(QColor("white")))
 
