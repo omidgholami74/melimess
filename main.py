@@ -320,10 +320,8 @@ class DataProcessor(QMainWindow):
         if not selected_items:
             return
         
-        # Get all selected rows (from any column)
         selected_rows = set(item.row() for item in selected_items)
         
-        # Get Original values from selected rows
         values = [self.current_column_data.at[row, 'Original'] for row in selected_rows 
                  if self.current_column_data.at[row, 'Original'] is not None and isinstance(self.current_column_data.at[row, 'Original'], (int, float))]
         
@@ -333,22 +331,20 @@ class DataProcessor(QMainWindow):
         mean_val = sum(values) / len(values)
         dup_range = float(self.dup_range_edit.text())
 
-        # Light yellow background (pastel)
-        light_yellow = QColor(255, 255, 150)  # Soft yellow
-        light_red = QColor(255, 180, 180)     # Soft red
+        light_yellow = QColor(255, 255, 150)
+        light_red = QColor(255, 180, 180)
 
-        # Highlight entire row: Fixed + Original + Modified
+        # First: highlight all selected rows in light yellow
         for row in selected_rows:
-            for col in [0, 1, 2]:  # Fixed, Original, Modified
+            for col in [0, 1, 2]:
                 item = self.table.item(row, col)
                 if item:
                     item.setBackground(QBrush(light_yellow))
 
-        # Check for outliers in Original column
+        # Then: mark outliers in red (only based on Original)
         for row in selected_rows:
             val = self.current_column_data.at[row, 'Original']
             if val is not None and isinstance(val, (int, float)) and abs(val - mean_val) > mean_val * dup_range:
-                # Highlight entire row in light red
                 for col in [0, 1, 2]:
                     item = self.table.item(row, col)
                     if item:
@@ -369,20 +365,39 @@ class DataProcessor(QMainWindow):
         min_val = float(self.min_edit.text())
         max_val = float(self.max_edit.text())
         
+        # Only fix cells that are currently red
+        light_red = QColor(255, 180, 180)
+        light_green = QColor(180, 255, 180)  # Light green for fixed
+
         for row in selected_rows:
-            rand_factor = random.uniform(min_val, max_val)
-            new_val = round(mean_val * rand_factor, 2)
-            self.current_column_data.at[row, 'Modified'] = new_val
-            item = self.table.item(row, 2)
-            if not item:
-                item = QTableWidgetItem()
-                self.table.setItem(row, 2, item)
-            item.setText(str(new_val))
-            # Reset background to white
-            for col in [0, 1, 2]:
-                bg_item = self.table.item(row, col)
-                if bg_item:
-                    bg_item.setBackground(QBrush(QColor("white")))
+            # Check if row is red
+            item = self.table.item(row, 1)  # Original column
+            if item and item.background().color() == light_red:
+                # Fix only Modified
+                rand_factor = random.uniform(min_val, max_val)
+                new_val = round(mean_val * rand_factor, 2)
+                self.current_column_data.at[row, 'Modified'] = new_val
+                mod_item = self.table.item(row, 2)
+                if not mod_item:
+                    mod_item = QTableWidgetItem()
+                    self.table.setItem(row, 2, mod_item)
+                mod_item.setText(str(new_val))
+                # Highlight fixed row in light green
+                for col in [0, 1, 2]:
+                    bg_item = self.table.item(row, col)
+                    if bg_item:
+                        bg_item.setBackground(QBrush(light_green))
+            else:
+                # For yellow rows: copy Original to Modified (if Modified is empty or None)
+                mod_val = self.current_column_data.at[row, 'Modified']
+                orig_val = self.current_column_data.at[row, 'Original']
+                if mod_val is None and orig_val is not None:
+                    self.current_column_data.at[row, 'Modified'] = orig_val
+                    mod_item = self.table.item(row, 2)
+                    if not mod_item:
+                        mod_item = QTableWidgetItem()
+                        self.table.setItem(row, 2, mod_item)
+                    mod_item.setText(str(orig_val))
 
     def select_crm_row(self):
         selected_items = self.table.selectedItems()
