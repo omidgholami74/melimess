@@ -140,7 +140,7 @@ class DataProcessor(QMainWindow):
 
         main_layout.addWidget(splitter)
 
-        # Data
+        # Data storage
         self.df = None
         self.reserved_rows = {}
         self.processed_columns = {}
@@ -150,7 +150,7 @@ class DataProcessor(QMainWindow):
         self.crm_row = None
         self.crm_901 = [18267.30, 11648.70, 11416.50, 11280.40, 11322.10, 10765.30, 9095.06, 6273.45, 8994.77, 9797.85, 9803.39, 9959.60, 10553.30, 10484.60, 10183.60, 11909.60, 10976.70, 10962.00, 12918.10, 10035.60, 9265.05, 11652.10, 12520.20, 12584.60, 11720.20, 10161.40, 10931.30, 10729.50, 10235.60, 10530.40, 6040.80, 13430.70]
 
-        # Connect paste globally
+        # Install event filter for global Ctrl+V
         self.installEventFilter(self)
 
     def eventFilter(self, source, event):
@@ -201,8 +201,6 @@ class DataProcessor(QMainWindow):
                 self.table.setItem(row, col_idx, item)
             item.setText(str(val))
             self.current_column_data.at[row, 'Modified'] = val
-
-        # No save here — let Fill Empty Cells work properly
 
     def load_file(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Open File", "", "CSV/Excel (*.csv *.xlsx)")
@@ -307,12 +305,12 @@ class DataProcessor(QMainWindow):
                 continue
             
             modified = self.current_column_data.at[i, 'Modified']
-            # Only fill if cell is None (empty) or if "Apply to filled" is checked
             if modified is None or apply_filled:
                 rand_factor = random.uniform(min_val, max_val)
                 new_val = (original * rand_factor) + offset
                 if apply_ratio_filled or modified is None:
                     new_val *= ratio
+                new_val = round(new_val, 2)  # Round to 2 decimal places
                 self.current_column_data.at[i, 'Modified'] = new_val
                 item = self.table.item(i, 2)
                 if not item:
@@ -331,6 +329,7 @@ class DataProcessor(QMainWindow):
         if not values:
             return
         
+        # Highlight selected rows as yellow
         for row in selected_rows:
             item = self.table.item(row, 2)
             item.setBackground(QBrush(QColor("yellow")))
@@ -338,6 +337,7 @@ class DataProcessor(QMainWindow):
         mean_val = sum(values) / len(values)
         dup_range = float(self.dup_range_edit.text())
         
+        # Check for outliers and set to red
         for row in selected_rows:
             val = self.current_column_data.at[row, 'Modified']
             if val is not None and abs(val - mean_val) > mean_val * dup_range:
@@ -360,7 +360,7 @@ class DataProcessor(QMainWindow):
         
         for row in selected_rows:
             rand_factor = random.uniform(min_val, max_val)
-            new_val = mean_val * rand_factor
+            new_val = round(mean_val * rand_factor, 2)  # Round to 2 decimal places
             self.current_column_data.at[row, 'Modified'] = new_val
             item = self.table.item(row, 2)
             item.setText(str(new_val))
@@ -407,7 +407,7 @@ class DataProcessor(QMainWindow):
             item = self.table.item(i, 2)
             if item and item.background().color() == QColor("red"):
                 rand_factor = random.uniform(min_val, max_val)
-                new_val = crm_901_val * rand_factor
+                new_val = round(crm_901_val * rand_factor, 2)  # Round to 2 decimal places
                 self.current_column_data.at[i, 'Modified'] = new_val
                 item.setText(str(new_val))
                 item.setBackground(QBrush(QColor("white")))
