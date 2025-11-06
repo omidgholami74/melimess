@@ -40,6 +40,11 @@ class DataProcessor(QMainWindow):
         self.next_column_button.setEnabled(False)
         left_layout.addLayout(nav_layout)
 
+        # Current element display
+        self.element_label = QLabel("Element: -")
+        self.element_label.setStyleSheet("font-weight: bold; color: #2c3e50;")
+        left_layout.addWidget(self.element_label)
+
         # Control panel for filling
         control_layout = QVBoxLayout()
         control_layout.addWidget(QLabel("Fill Controls:"))
@@ -143,7 +148,7 @@ class DataProcessor(QMainWindow):
 
         # Data storage
         self.df = None
-        self.header_row = None  # Row 0: element names (header)
+        self.header_row = None  # Row 1: element names (هدر اصلی)
         self.reserved_rows = {}
         self.processed_columns = {}
         self.current_column_index = 0
@@ -227,10 +232,10 @@ class DataProcessor(QMainWindow):
             else:
                 self.df = pd.read_excel(file_path, header=None)
             
-            # Row 0: element names (header)
-            self.header_row = self.df.iloc[0].copy()
+            # Row 1: element names (هدر اصلی)
+            self.header_row = self.df.iloc[1].copy()
             
-            # Reserved rows: 2,3,4,5 (skip 0 and 1 if needed)
+            # Reserved rows: 2,3,4,5
             self.reserved_rows = {
                 2: self.df.iloc[2].copy(),
                 3: self.df.iloc[3].copy(),
@@ -254,6 +259,13 @@ class DataProcessor(QMainWindow):
             elif cell.endswith('<') or cell.endswith('>'):
                 return float(cell[:-1])
         return cell
+
+    def get_current_element_name(self):
+        """دریافت نام عنصر از سطر 1 (هدر)"""
+        if self.header_row is None or self.current_column_index >= len(self.header_row):
+            return "Unknown"
+        name = str(self.header_row.iloc[self.current_column_index]).strip()
+        return name if name else "Unknown"
 
     def load_column(self, col_index):
         if col_index < 1 or col_index >= len(self.processing_df.columns):
@@ -291,6 +303,10 @@ class DataProcessor(QMainWindow):
         self.current_column_index = col_index
         self.prev_column_button.setEnabled(col_index > 1)
         self.next_column_button.setEnabled(col_index < len(self.processing_df.columns) - 1)
+        
+        # نمایش نام عنصر
+        element_name = self.get_current_element_name()
+        self.element_label.setText(f"Element: {element_name}")
 
     def next_column(self):
         self.save_current_modified()
@@ -442,8 +458,9 @@ class DataProcessor(QMainWindow):
         if crm_original is None or not isinstance(crm_original, (int, float)):
             QMessageBox.warning(self, "Error", "Selected CRM row has no valid Original value.")
             return
-        # Get element name from header row (row 0)
-        element_name = self.df.iloc[1,:][self.current_column_index]
+
+        # نام عنصر از سطر 1
+        element_name = self.get_current_element_name()
         if element_name not in self.crm_903:
             QMessageBox.warning(self, "Error", f"CRM 903 value not available for element: {element_name}")
             return
@@ -493,7 +510,7 @@ class DataProcessor(QMainWindow):
             QMessageBox.warning(self, "Error", "No CRM row selected. Use 'Compare with CRM 903' first.")
             return
         
-        element_name = str(self.header_row[self.current_column_index]).strip()
+        element_name = self.get_current_element_name()
         if element_name not in self.crm_903:
             return
         
@@ -559,7 +576,7 @@ class DataProcessor(QMainWindow):
             self.processing_df.iloc[:, col_index] = col_data
         
         full_df = pd.DataFrame(columns=self.df.columns, index=range(len(self.df)))
-        full_df.iloc[0] = self.header_row  # Restore header
+        full_df.iloc[1] = self.header_row  # بازگرداندن هدر اصلی (سطر 1)
         full_df.iloc[2] = self.reserved_rows[2]
         full_df.iloc[3] = self.reserved_rows[3]
         full_df.iloc[4] = self.reserved_rows[4]
