@@ -103,10 +103,6 @@ class DataProcessor(QMainWindow):
         crm_layout.addLayout(crm_range_layout)
 
         crm_buttons_layout = QHBoxLayout()
-        self.select_crm_button = QPushButton("Select CRM Row")
-        self.select_crm_button.clicked.connect(self.select_crm_row)
-        crm_buttons_layout.addWidget(self.select_crm_button)
-
         self.compare_crm_button = QPushButton("Compare with CRM 901")
         self.compare_crm_button.clicked.connect(self.compare_with_crm)
         crm_buttons_layout.addWidget(self.compare_crm_button)
@@ -334,14 +330,12 @@ class DataProcessor(QMainWindow):
         light_yellow = QColor(255, 255, 150)
         light_red = QColor(255, 180, 180)
 
-        # First: highlight all selected rows in light yellow
         for row in selected_rows:
             for col in [0, 1, 2]:
                 item = self.table.item(row, col)
                 if item:
                     item.setBackground(QBrush(light_yellow))
 
-        # Then: mark outliers in red (entire row)
         for row in selected_rows:
             val = self.current_column_data.at[row, 'Original']
             if val is not None and isinstance(val, (int, float)) and abs(val - mean_val) > mean_val * dup_range:
@@ -369,11 +363,10 @@ class DataProcessor(QMainWindow):
         light_green = QColor(180, 255, 180)
 
         for row in selected_rows:
-            orig_item = self.table.item(row, 1)  # Original column
-            mod_item = self.table.item(row, 2)   # Modified column
+            orig_item = self.table.item(row, 1)
+            mod_item = self.table.item(row, 2)
 
             if orig_item and orig_item.background().color() == light_red:
-                # Only fix if Original is red
                 rand_factor = random.uniform(min_val, max_val)
                 new_val = round(mean_val * rand_factor, 2)
                 self.current_column_data.at[row, 'Modified'] = new_val
@@ -381,12 +374,10 @@ class DataProcessor(QMainWindow):
                     mod_item = QTableWidgetItem()
                     self.table.setItem(row, 2, mod_item)
                 mod_item.setText(str(new_val))
-                # Keep Original and Fixed red, only Modified becomes green
-                self.table.item(row, 0).setBackground(QBrush(light_red))   # Fixed
-                self.table.item(row, 1).setBackground(QBrush(light_red))   # Original
-                mod_item.setBackground(QBrush(light_green))               # Modified
+                self.table.item(row, 0).setBackground(QBrush(light_red))
+                self.table.item(row, 1).setBackground(QBrush(light_red))
+                mod_item.setBackground(QBrush(light_green))
             else:
-                # For yellow rows: copy Original to Modified if empty
                 mod_val = self.current_column_data.at[row, 'Modified']
                 orig_val = self.current_column_data.at[row, 'Original']
                 if mod_val is None and orig_val is not None:
@@ -396,51 +387,76 @@ class DataProcessor(QMainWindow):
                         self.table.setItem(row, 2, mod_item)
                     mod_item.setText(str(orig_val))
 
-    def select_crm_row(self):
-        selected_items = self.table.selectedItems()
-        if len(selected_items) != 1 or selected_items[0].column() != 2:
-            QMessageBox.warning(self, "Error", "Select one modified cell as CRM.")
-            return
-        row = selected_items[0].row()
-        self.crm_row = row
-        QMessageBox.information(self, "Selected", f"CRM row selected: {row}")
-
     def compare_with_crm(self):
-        if self.crm_row is None:
-            QMessageBox.warning(self, "Error", "Select CRM row first.")
+        selected_items = self.table.selectedItems()
+        if not selected_items:
+            QMessageBox.warning(self, "Error", "Please select at least one row.")
+            return
+        
+        selected_rows = set(item.row() for item in selected_items)
+        if len(selected_rows) != 1:
+            QMessageBox.warning(self, "Error", "Please select exactly one row for CRM comparison.")
+            return
+        
+        self.crm_row = next(iter(selected_rows))
+        crm_original = self.current_column_data.at[self.crm_row, 'Original']
+        if crm_original is None or not isinstance(crm_original, (int, float)):
+            QMessageBox.warning(self, "Error", "Selected CRM row has no valid Original value.")
             return
         
         if self.current_column_index >= len(self.crm_901):
+            QMessageBox.warning(self, "Error", "CRM 901 value not available for this column.")
             return
         
         crm_901_val = self.crm_901[self.current_column_index]
         crm_range = float(self.crm_range_edit.text())
-        
-        for i in range(len(self.current_column_data)):
-            val = self.current_column_data.at[i, 'Modified']
-            if val is not None and abs(val - crm_901_val) > crm_901_val * crm_range:
-                item = self.table.item(i, 2)
-                item.setBackground(QBrush(QColor(255, 180, 180)))
+
+        light_green = QColor(180, 255, 180)
+        light_red = QColor(255, 180, 180)
+
+        # Only color the selected row (CRM row)
+        mod_val = self.current_column_data.at[self.crm_row, 'Modified']
+        if mod_val is not None and isinstance(mod_val, (int, float)):
+            if abs(mod_val - crm_901_val) <= crm_901_val * crm_range:
+                color = light_green
+            else:
+                color = light_red
+            # Color the entire row
+            for col in [0, 1, 2]:
+                item = self.table.item(self.crm_row, col)
+                if item:
+                    item.setBackground(QBrush(color))
 
     def fix_crm_differences(self):
         if self.crm_row is None:
+            QMessageBox.warning(self, "Error", "No CRM row selected. Use 'Compare with CRM 901' first.")
+            return
+        
+        crm_original = self.current_column_data.at[self.crm_row, 'Original']
+        if crm_original is None or not isinstance(crm_original, (int, float)):
             return
         
         if self.current_column_index >= len(self.crm_901):
             return
         
-        crm_901_val = self.crm_901[self.current_column_index]
-        min_val = float(self.min_edit.text())
-        max_val = float(self.max_edit.text())
-        
-        for i in range(len(self.current_column_data)):
-            item = self.table.item(i, 2)
-            if item and item.background().color() == QColor(255, 180, 180):
-                rand_factor = random.uniform(min_val, max_val)
-                new_val = round(crm_901_val * rand_factor, 2)
-                self.current_column_data.at[i, 'Modified'] = new_val
-                item.setText(str(new_val))
-                item.setBackground(QBrush(QColor("white")))
+        crm_range = float(self.crm_range_edit.text())
+        min_factor = 1.0 - crm_range
+        max_factor = 1.0 + crm_range
+
+        light_red = QColor(255, 180, 180)
+
+        # Only fix the CRM row if it's red
+        mod_item = self.table.item(self.crm_row, 2)
+        if mod_item and mod_item.background().color() == light_red:
+            rand_factor = random.uniform(min_factor, max_factor)
+            new_val = round(crm_original * rand_factor, 2)
+            self.current_column_data.at[self.crm_row, 'Modified'] = new_val
+            mod_item.setText(str(new_val))
+            # Turn the row green after fix
+            for col in [0, 1, 2]:
+                item = self.table.item(self.crm_row, col)
+                if item:
+                    item.setBackground(QBrush(QColor(180, 255, 180)))
 
     def apply_limits(self):
         limit_row = self.reserved_rows[3]
