@@ -6,8 +6,8 @@ from PyQt6.QtWidgets import (
     QPushButton, QFileDialog, QTableWidget, QTableWidgetItem,
     QLineEdit, QLabel, QCheckBox, QMessageBox, QSplitter
 )
-from PyQt6.QtCore import Qt, QMimeData
-from PyQt6.QtGui import QColor, QBrush, QKeySequence
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QBrush
 
 class DataProcessor(QMainWindow):
     def __init__(self):
@@ -202,7 +202,7 @@ class DataProcessor(QMainWindow):
             item.setText(str(val))
             self.current_column_data.at[row, 'Modified'] = val
 
-        self.save_current_modified()
+        # No save here — let Fill Empty Cells work properly
 
     def load_file(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Open File", "", "CSV/Excel (*.csv *.xlsx)")
@@ -307,6 +307,7 @@ class DataProcessor(QMainWindow):
                 continue
             
             modified = self.current_column_data.at[i, 'Modified']
+            # Only fill if cell is None (empty) or if "Apply to filled" is checked
             if modified is None or apply_filled:
                 rand_factor = random.uniform(min_val, max_val)
                 new_val = (original * rand_factor) + offset
@@ -314,6 +315,9 @@ class DataProcessor(QMainWindow):
                     new_val *= ratio
                 self.current_column_data.at[i, 'Modified'] = new_val
                 item = self.table.item(i, 2)
+                if not item:
+                    item = QTableWidgetItem()
+                    self.table.setItem(i, 2, item)
                 item.setText(str(new_val))
 
     def check_duplicates(self):
