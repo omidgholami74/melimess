@@ -119,7 +119,7 @@ class DataProcessor(QMainWindow):
         left_layout.addLayout(crm_layout)
 
         # Apply limits from row 4
-        self.apply_limits_button = QPushButton("Apply Limits < >")
+        self.apply_limits_button = QPushButton("Apply Limits < Only")
         self.apply_limits_button.clicked.connect(self.apply_limits)
         left_layout.addWidget(self.apply_limits_button)
 
@@ -475,7 +475,6 @@ class DataProcessor(QMainWindow):
             QMessageBox.warning(self, "Error", "No CRM row selected. Use 'Compare with CRM 901' first.")
             return
         
-        # مقدار OREAS = مقدار CRM 901
         crm_901_val = self.crm_901[self.current_column_index]
         crm_range = float(self.crm_range_edit.text())
         min_factor = 1.0 - crm_range
@@ -483,11 +482,9 @@ class DataProcessor(QMainWindow):
 
         light_green = QColor(180, 255, 180)
 
-        # تولید عدد تصادفی و محاسبه
         rand_factor = random.uniform(min_factor, max_factor)
         new_val = round(crm_901_val * rand_factor, 2)
 
-        # به‌روزرسانی Modified
         self.current_column_data.at[self.crm_row, 'Modified'] = new_val
         mod_item = self.table.item(self.crm_row, 2)
         if mod_item is None:
@@ -495,13 +492,11 @@ class DataProcessor(QMainWindow):
             self.table.setItem(self.crm_row, 2, mod_item)
         mod_item.setText(str(new_val))
 
-        # رنگ سبز
         for col in [0, 1, 2]:
             item = self.table.item(self.crm_row, col)
             if item:
                 item.setBackground(QBrush(light_green))
 
-        # حذف سطر مرجع
         self.remove_crm_reference_row()
 
     def clear_crm_row(self):
@@ -516,21 +511,21 @@ class DataProcessor(QMainWindow):
     def apply_limits(self):
         limit_row = self.reserved_rows[3]
         col_index = self.current_column_index
-        limit = limit_row[col_index] if not pd.isna(limit_row[col_index]) else 0
+        limit_val = limit_row[col_index] if not pd.isna(limit_row[col_index]) else None
         
+        if limit_val is None or not isinstance(limit_val, (int, float)):
+            QMessageBox.information(self, "Info", "No valid limit value in row 4 for this column.")
+            return
+
         for i in range(len(self.current_column_data)):
-            val = self.current_column_data.at[i, 'Modified']
-            if val is not None and isinstance(val, (int, float)):
-                if val < limit:
-                    new_val = f"<{limit}"
-                elif val > limit * 10:
-                    new_val = f">{limit}"
-                else:
-                    new_val = val
-                self.current_column_data.at[i, 'Modified'] = new_val
-                item = self.table.item(i, 2)
-                if item:
-                    item.setText(str(new_val))
+            mod_val = self.current_column_data.at[i, 'Modified']
+            if mod_val is not None and isinstance(mod_val, (int, float)):
+                if mod_val < limit_val:
+                    new_val = f"<{limit_val}"
+                    self.current_column_data.at[i, 'Modified'] = new_val
+                    item = self.table.item(i, 2)
+                    if item:
+                        item.setText(new_val)
 
     def finalize_data(self):
         self.save_current_modified()
