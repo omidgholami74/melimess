@@ -103,7 +103,7 @@ class DataProcessor(QMainWindow):
         crm_layout.addLayout(crm_range_layout)
 
         crm_buttons_layout = QHBoxLayout()
-        self.compare_crm_button = QPushButton("Compare with CRM 901")
+        self.compare_crm_button = QPushButton("Compare with CRM 903")
         self.compare_crm_button.clicked.connect(self.compare_with_crm)
         crm_buttons_layout.addWidget(self.compare_crm_button)
 
@@ -143,6 +143,7 @@ class DataProcessor(QMainWindow):
 
         # Data storage
         self.df = None
+        self.header_row = None  # Row 0: element names (header)
         self.reserved_rows = {}
         self.processed_columns = {}
         self.current_column_index = 0
@@ -150,7 +151,20 @@ class DataProcessor(QMainWindow):
         self.fixed_column = None
         self.crm_row = None
         self.crm_reference_row = None
-        self.crm_901 = [18267.30, 11648.70, 11416.50, 11280.40, 11322.10, 10765.30, 9095.06, 6273.45, 8994.77, 9797.85, 9803.39, 9959.60, 10553.30, 10484.60, 10183.60, 11909.60, 10976.70, 10962.00, 12918.10, 10035.60, 9265.05, 11652.10, 12520.20, 12584.60, 11720.20, 10161.40, 10931.30, 10729.50, 10235.60, 10530.40, 6040.80, 13430.70]
+
+        # CRM 903 - OREAS 903 values by element name
+        self.crm_903 = {
+            'Ag': 0.432001, 'Al': 58903.5, 'As': 49.6558, 'Au': 0.00495, 'Ba': 197.464,
+            'Be': 4.42199, 'Bi': 8.94184, 'Ca': 6250.92, 'Cd': 0.203073, 'Ce': 82.2075,
+            'Co': 130.622, 'Cr': 72.8517, 'Cs': 3.56726, 'Cu': 6516.13, 'Cu-Sol(H2SO4)': 4340.59,
+            'Fe': 41573.8, 'Ga': 15.0037, 'Ge': 0.0976435, 'Hf': 4.55988, 'In': 0.162135,
+            'K': 33078.5, 'La': 40.2266, 'Li': 18.3245, 'Lu': 0.364898, 'Mg': 7139.92,
+            'Mn': 689.554, 'Mo': 4.31947, 'Na': 300.694, 'Ni': 53.9221, 'P': 1068.18,
+            'Pb': 11.2861, 'Rb': 136.573, 'S': 4996.88, 'Sb': 1.57009, 'Sc': 10.2376,
+            'Se': 6.06318, 'Sn': 2.62936, 'Sr': 77.1271, 'Ta': 0.536122, 'Tb': 0.834551,
+            'Te': 0.0344281, 'Th': 13.643, 'Ti': 1924.92, 'Tl': 0.621858, 'U': 7.58033,
+            'V': 73.9117, 'W': 0.531139, 'Y': 22.4734, 'Yb': 2.36446, 'Zn': 24.2974, 'Zr': 151.863
+        }
 
         # Install event filter for global Ctrl+V
         self.installEventFilter(self)
@@ -213,8 +227,11 @@ class DataProcessor(QMainWindow):
             else:
                 self.df = pd.read_excel(file_path, header=None)
             
+            # Row 0: element names (header)
+            self.header_row = self.df.iloc[0].copy()
+            
+            # Reserved rows: 2,3,4,5 (skip 0 and 1 if needed)
             self.reserved_rows = {
-                0: self.df.iloc[0].copy(),
                 2: self.df.iloc[2].copy(),
                 3: self.df.iloc[3].copy(),
                 4: self.df.iloc[4].copy(),
@@ -425,12 +442,13 @@ class DataProcessor(QMainWindow):
         if crm_original is None or not isinstance(crm_original, (int, float)):
             QMessageBox.warning(self, "Error", "Selected CRM row has no valid Original value.")
             return
-        
-        if self.current_column_index >= len(self.crm_901):
-            QMessageBox.warning(self, "Error", "CRM 901 value not available for this column.")
+        # Get element name from header row (row 0)
+        element_name = self.df.iloc[1,:][self.current_column_index]
+        if element_name not in self.crm_903:
+            QMessageBox.warning(self, "Error", f"CRM 903 value not available for element: {element_name}")
             return
         
-        crm_901_val = self.crm_901[self.current_column_index]
+        crm_903_val = self.crm_903[element_name]
         crm_range = float(self.crm_range_edit.text())
 
         light_green = QColor(180, 255, 180)
@@ -442,12 +460,12 @@ class DataProcessor(QMainWindow):
         self.table.insertRow(insert_row)
         self.crm_reference_row = insert_row
 
-        fixed_item = QTableWidgetItem("CRM 901")
+        fixed_item = QTableWidgetItem("CRM 903")
         fixed_item.setBackground(QBrush(QColor(200, 200, 255)))
         fixed_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
         self.table.setItem(insert_row, 0, fixed_item)
 
-        orig_item = QTableWidgetItem(str(crm_901_val))
+        orig_item = QTableWidgetItem(str(crm_903_val))
         orig_item.setBackground(QBrush(QColor(200, 200, 255)))
         orig_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
         self.table.setItem(insert_row, 1, orig_item)
@@ -459,7 +477,7 @@ class DataProcessor(QMainWindow):
 
         mod_val = self.current_column_data.at[self.crm_row, 'Modified']
         if mod_val is not None and isinstance(mod_val, (int, float)):
-            if abs(mod_val - crm_901_val) <= crm_901_val * crm_range:
+            if abs(mod_val - crm_903_val) <= crm_903_val * crm_range:
                 color = light_green
             else:
                 color = light_red
@@ -472,10 +490,14 @@ class DataProcessor(QMainWindow):
 
     def fix_crm_differences(self):
         if self.crm_row is None or self.crm_reference_row is None:
-            QMessageBox.warning(self, "Error", "No CRM row selected. Use 'Compare with CRM 901' first.")
+            QMessageBox.warning(self, "Error", "No CRM row selected. Use 'Compare with CRM 903' first.")
             return
         
-        crm_901_val = self.crm_901[self.current_column_index]
+        element_name = str(self.header_row[self.current_column_index]).strip()
+        if element_name not in self.crm_903:
+            return
+        
+        crm_903_val = self.crm_903[element_name]
         crm_range = float(self.crm_range_edit.text())
         min_factor = 1.0 - crm_range
         max_factor = 1.0 + crm_range
@@ -483,7 +505,7 @@ class DataProcessor(QMainWindow):
         light_green = QColor(180, 255, 180)
 
         rand_factor = random.uniform(min_factor, max_factor)
-        new_val = round(crm_901_val * rand_factor, 2)
+        new_val = round(crm_903_val * rand_factor, 6)
 
         self.current_column_data.at[self.crm_row, 'Modified'] = new_val
         mod_item = self.table.item(self.crm_row, 2)
@@ -537,7 +559,7 @@ class DataProcessor(QMainWindow):
             self.processing_df.iloc[:, col_index] = col_data
         
         full_df = pd.DataFrame(columns=self.df.columns, index=range(len(self.df)))
-        full_df.iloc[0] = self.reserved_rows[0]
+        full_df.iloc[0] = self.header_row  # Restore header
         full_df.iloc[2] = self.reserved_rows[2]
         full_df.iloc[3] = self.reserved_rows[3]
         full_df.iloc[4] = self.reserved_rows[4]
