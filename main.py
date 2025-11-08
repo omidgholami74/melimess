@@ -291,7 +291,17 @@ class DataProcessor(QMainWindow):
             fixed_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
             self.table.setItem(i, 0, fixed_item)
             
-            orig_item = QTableWidgetItem(str(self.current_column_data.at[i, 'Original']))
+            orig_val = self.current_column_data.at[i, 'Original']
+            if isinstance(orig_val, (int, float)) and not pd.isna(orig_val):
+                if orig_val == int(orig_val):  # عدد صحیح است
+                    orig_text = str(int(orig_val))
+                else:  # اعشار دارد
+                    orig_text = f"{orig_val:.2f}"
+            else:
+                orig_text = "" if pd.isna(orig_val) else str(orig_val)
+
+            orig_item = QTableWidgetItem(orig_text)
+            
             orig_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
             self.table.setItem(i, 1, orig_item)
             
