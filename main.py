@@ -4,16 +4,79 @@ import random
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QFileDialog, QTableWidget, QTableWidgetItem,
-    QLineEdit, QLabel, QCheckBox, QMessageBox, QSplitter
+    QLineEdit, QLabel, QCheckBox, QMessageBox, QSplitter,
+    QGroupBox, QFormLayout, QDoubleSpinBox, QStatusBar
 )
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QBrush
+from PyQt6.QtCore import Qt,QEvent
+from PyQt6.QtGui import QColor, QBrush, QFont
 
 class DataProcessor(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Data Processor with PyQt6")
         self.setGeometry(100, 100, 1200, 800)
+
+        # Set global stylesheet for better UI
+        self.setStyleSheet("""
+            QMainWindow {
+                background-color: #f0f0f0;
+            }
+            QLabel {
+                font-size: 12px;
+                color: #333;
+            }
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                padding: 6px 12px;
+                border: none;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+            QPushButton:disabled {
+                background-color: #cccccc;
+            }
+            QLineEdit, QDoubleSpinBox {
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                padding: 4px;
+                background-color: white;
+            }
+            QCheckBox {
+                color: #333;
+            }
+            QTableWidget {
+                background-color: white;
+                alternate-background-color: #f9f9f9;
+                gridline-color: #ddd;
+                selection-background-color: #a8d1ff;
+            }
+            QTableWidget::item {
+                padding: 4px;
+            }
+            QHeaderView::section {
+                background-color: #e0e0e0;
+                padding: 4px;
+                border: 1px solid #ccc;
+                font-weight: bold;
+            }
+            QGroupBox {
+                border: 1px solid #ccc;
+                border-radius: 6px;
+                margin-top: 10px;
+                padding: 10px;
+                font-weight: bold;
+                color: #2c3e50;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 3px 0 3px;
+            }
+        """)
 
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
@@ -22,116 +85,164 @@ class DataProcessor(QMainWindow):
         # Left panel for controls
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
+        left_layout.setSpacing(10)
 
-        # Buttons
+        # File Group
+        file_group = QGroupBox("File Operations")
+        file_layout = QVBoxLayout(file_group)
         self.load_button = QPushButton("Load CSV/Excel File")
         self.load_button.clicked.connect(self.load_file)
-        left_layout.addWidget(self.load_button)
+        self.load_button.setToolTip("Load a CSV or Excel file to process")
+        file_layout.addWidget(self.load_button)
+        left_layout.addWidget(file_group)
 
-        nav_layout = QHBoxLayout()
+        # Navigation Group
+        nav_group = QGroupBox("Column Navigation")
+        nav_layout = QVBoxLayout(nav_group)
+        nav_buttons_layout = QHBoxLayout()
         self.prev_column_button = QPushButton("Previous Column")
         self.prev_column_button.clicked.connect(self.prev_column)
         self.prev_column_button.setEnabled(False)
-        nav_layout.addWidget(self.prev_column_button)
+        nav_buttons_layout.addWidget(self.prev_column_button)
 
         self.next_column_button = QPushButton("Next Column")
         self.next_column_button.clicked.connect(self.next_column)
-        nav_layout.addWidget(self.next_column_button)
+        nav_buttons_layout.addWidget(self.next_column_button)
         self.next_column_button.setEnabled(False)
-        left_layout.addLayout(nav_layout)
+        nav_layout.addLayout(nav_buttons_layout)
 
         # Current element display
         self.element_label = QLabel("Element: -")
-        self.element_label.setStyleSheet("font-weight: bold; color: #2c3e50;")
-        left_layout.addWidget(self.element_label)
+        self.element_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #2c3e50;")
+        nav_layout.addWidget(self.element_label)
+        left_layout.addWidget(nav_group)
 
-        # Control panel for filling
-        control_layout = QVBoxLayout()
-        control_layout.addWidget(QLabel("Fill Controls:"))
+        # Fill Controls Group
+        fill_group = QGroupBox("Fill Empty Cells")
+        fill_layout = QFormLayout(fill_group)
+        fill_layout.setSpacing(6)
+
+        # Min/Max
         min_max_layout = QHBoxLayout()
+        self.min_spin = QDoubleSpinBox()
+        self.min_spin.setValue(0.9)
+        self.min_spin.setMinimum(0.0)
+        self.min_spin.setMaximum(10.0)
+        self.min_spin.setSingleStep(0.1)
         min_max_layout.addWidget(QLabel("Min:"))
-        self.min_edit = QLineEdit("0.9")
-        min_max_layout.addWidget(self.min_edit)
+        min_max_layout.addWidget(self.min_spin)
+
+        self.max_spin = QDoubleSpinBox()
+        self.max_spin.setValue(1.1)
+        self.max_spin.setMinimum(0.0)
+        self.max_spin.setMaximum(10.0)
+        self.max_spin.setSingleStep(0.1)
         min_max_layout.addWidget(QLabel("Max:"))
-        self.max_edit = QLineEdit("1.1")
-        min_max_layout.addWidget(self.max_edit)
-        control_layout.addLayout(min_max_layout)
+        min_max_layout.addWidget(self.max_spin)
+        fill_layout.addRow(min_max_layout)
 
+        # Offset/Ratio
         offset_ratio_layout = QHBoxLayout()
+        self.offset_spin = QDoubleSpinBox()
+        self.offset_spin.setValue(0.0)
+        self.offset_spin.setMinimum(-1000.0)
+        self.offset_spin.setMaximum(1000.0)
+        self.offset_spin.setSingleStep(1.0)
         offset_ratio_layout.addWidget(QLabel("Offset:"))
-        self.offset_edit = QLineEdit("0")
-        offset_ratio_layout.addWidget(self.offset_edit)
-        offset_ratio_layout.addWidget(QLabel("Ratio:"))
-        self.ratio_edit = QLineEdit("1.0")
-        offset_ratio_layout.addWidget(self.ratio_edit)
-        control_layout.addLayout(offset_ratio_layout)
+        offset_ratio_layout.addWidget(self.offset_spin)
 
+        self.ratio_spin = QDoubleSpinBox()
+        self.ratio_spin.setValue(1.0)
+        self.ratio_spin.setMinimum(0.0)
+        self.ratio_spin.setMaximum(10.0)
+        self.ratio_spin.setSingleStep(0.1)
+        offset_ratio_layout.addWidget(QLabel("Ratio:"))
+        offset_ratio_layout.addWidget(self.ratio_spin)
+        fill_layout.addRow(offset_ratio_layout)
+
+        # Checkboxes
         checkboxes_layout = QHBoxLayout()
         self.apply_filled_checkbox = QCheckBox("Apply to filled cells")
         checkboxes_layout.addWidget(self.apply_filled_checkbox)
         self.apply_ratio_checkbox = QCheckBox("Apply ratio to filled cells")
         checkboxes_layout.addWidget(self.apply_ratio_checkbox)
-        control_layout.addLayout(checkboxes_layout)
+        fill_layout.addRow(checkboxes_layout)
 
         self.fill_button = QPushButton("Fill Empty Cells")
         self.fill_button.clicked.connect(self.fill_empty_cells)
-        control_layout.addWidget(self.fill_button)
-        left_layout.addLayout(control_layout)
+        self.fill_button.setToolTip("Fill empty or selected cells with random values in range")
+        fill_layout.addRow(self.fill_button)
+        left_layout.addWidget(fill_group)
 
-        # Duplicate handling
-        dup_layout = QVBoxLayout()
-        dup_layout.addWidget(QLabel("Duplicate Handling:"))
-        dup_range_layout = QHBoxLayout()
-        dup_range_layout.addWidget(QLabel("Duplicate Range:"))
-        self.dup_range_edit = QLineEdit("0.05")
-        dup_range_layout.addWidget(self.dup_range_edit)
-        dup_layout.addLayout(dup_range_layout)
+        # Duplicate Handling Group
+        dup_group = QGroupBox("Duplicate Handling")
+        dup_layout = QFormLayout(dup_group)
+        dup_layout.setSpacing(6)
+
+        self.dup_range_spin = QDoubleSpinBox()
+        self.dup_range_spin.setValue(0.05)
+        self.dup_range_spin.setMinimum(0.0)
+        self.dup_range_spin.setMaximum(1.0)
+        self.dup_range_spin.setSingleStep(0.01)
+        dup_layout.addRow("Duplicate Range:", self.dup_range_spin)
 
         dup_buttons_layout = QHBoxLayout()
         self.check_dup_button = QPushButton("Check Duplicates")
         self.check_dup_button.clicked.connect(self.check_duplicates)
+        self.check_dup_button.setToolTip("Highlight duplicates in selected rows")
         dup_buttons_layout.addWidget(self.check_dup_button)
 
         self.fix_dup_button = QPushButton("Fix Duplicates")
         self.fix_dup_button.clicked.connect(self.fix_duplicates)
+        self.fix_dup_button.setToolTip("Fix highlighted duplicates with average-based values")
         dup_buttons_layout.addWidget(self.fix_dup_button)
-        dup_layout.addLayout(dup_buttons_layout)
-        left_layout.addLayout(dup_layout)
+        dup_layout.addRow(dup_buttons_layout)
+        left_layout.addWidget(dup_group)
 
-        # CRM handling
-        crm_layout = QVBoxLayout()
-        crm_layout.addWidget(QLabel("CRM Handling:"))
-        crm_range_layout = QHBoxLayout()
-        crm_range_layout.addWidget(QLabel("CRM Range:"))
-        self.crm_range_edit = QLineEdit("0.1")
-        crm_range_layout.addWidget(self.crm_range_edit)
-        crm_layout.addLayout(crm_range_layout)
+        # CRM Handling Group
+        crm_group = QGroupBox("CRM Handling")
+        crm_layout = QFormLayout(crm_group)
+        crm_layout.setSpacing(6)
 
-        crm_buttons_layout = QHBoxLayout()
+        self.crm_range_spin = QDoubleSpinBox()
+        self.crm_range_spin.setValue(0.1)
+        self.crm_range_spin.setMinimum(0.0)
+        self.crm_range_spin.setMaximum(1.0)
+        self.crm_range_spin.setSingleStep(0.01)
+        crm_layout.addRow("CRM Range:", self.crm_range_spin)
+
+        crm_buttons_layout = QVBoxLayout()
         self.compare_crm_button = QPushButton("Compare with CRM 903")
         self.compare_crm_button.clicked.connect(self.compare_with_crm)
+        self.compare_crm_button.setToolTip("Compare selected row with CRM 903 value")
         crm_buttons_layout.addWidget(self.compare_crm_button)
 
         self.fix_crm_button = QPushButton("Fix CRM Differences")
         self.fix_crm_button.clicked.connect(self.fix_crm_differences)
+        self.fix_crm_button.setToolTip("Adjust selected CRM row to match within range")
         crm_buttons_layout.addWidget(self.fix_crm_button)
 
         self.clear_crm_button = QPushButton("Clear CRM Row")
         self.clear_crm_button.clicked.connect(self.clear_crm_row)
         self.clear_crm_button.setEnabled(False)
+        self.clear_crm_button.setToolTip("Remove CRM reference row and clear highlights")
         crm_buttons_layout.addWidget(self.clear_crm_button)
-        crm_layout.addLayout(crm_buttons_layout)
-        left_layout.addLayout(crm_layout)
+        crm_layout.addRow(crm_buttons_layout)
+        left_layout.addWidget(crm_group)
 
-        # Apply limits from row 4
+        # Actions Group
+        actions_group = QGroupBox("Actions")
+        actions_layout = QVBoxLayout(actions_group)
         self.apply_limits_button = QPushButton("Apply Limits < Only")
         self.apply_limits_button.clicked.connect(self.apply_limits)
-        left_layout.addWidget(self.apply_limits_button)
+        self.apply_limits_button.setToolTip("Apply limits from row 4 to modified values")
+        actions_layout.addWidget(self.apply_limits_button)
 
-        # Finalize
         self.finalize_button = QPushButton("Finalize and Save")
         self.finalize_button.clicked.connect(self.finalize_data)
-        left_layout.addWidget(self.finalize_button)
+        self.finalize_button.setToolTip("Save processed data to CSV")
+        actions_layout.addWidget(self.finalize_button)
+        left_layout.addWidget(actions_group)
 
         left_layout.addStretch()
 
@@ -141,10 +252,18 @@ class DataProcessor(QMainWindow):
         self.table = QTableWidget()
         self.table.setEditTriggers(QTableWidget.EditTrigger.DoubleClicked | QTableWidget.EditTrigger.AnyKeyPressed)
         self.table.setSelectionMode(QTableWidget.SelectionMode.ContiguousSelection)
+        self.table.setAlternatingRowColors(True)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.verticalHeader().setVisible(False)
         splitter.addWidget(self.table)
-        splitter.setSizes([300, 900])
+        splitter.setSizes([350, 850])  # Slightly wider left panel for better UI
 
         main_layout.addWidget(splitter)
+
+        # Status bar
+        self.status_bar = QStatusBar()
+        self.setStatusBar(self.status_bar)
+        self.status_bar.showMessage("Ready")
 
         # Data storage
         self.df = None
@@ -175,7 +294,7 @@ class DataProcessor(QMainWindow):
         self.installEventFilter(self)
 
     def eventFilter(self, source, event):
-        if event.type() == event.Type.KeyPress:
+        if event.type() == QEvent.Type.KeyPress:
             key_event = event
             if key_event.modifiers() == Qt.KeyboardModifier.ControlModifier and key_event.key() == Qt.Key.Key_V:
                 self.paste_from_clipboard()
@@ -223,34 +342,40 @@ class DataProcessor(QMainWindow):
                 actual_row -= 1
             if actual_row < len(self.current_column_data):
                 self.current_column_data.at[actual_row, 'Modified'] = val
+        self.status_bar.showMessage("Pasted from clipboard")
 
     def load_file(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Open File", "", "CSV/Excel (*.csv *.xlsx)")
         if file_path:
-            if file_path.endswith('.csv'):
-                self.df = pd.read_csv(file_path, header=None)
-            else:
-                self.df = pd.read_excel(file_path, header=None)
-            
-            # Row 1: element names (هدر اصلی)
-            self.header_row = self.df.iloc[1].copy()
-            
-            # Reserved rows: 2,3,4,5
-            self.reserved_rows = {
-                2: self.df.iloc[2].copy(),
-                3: self.df.iloc[3].copy(),
-                4: self.df.iloc[4].copy(),
-                5: self.df.iloc[5].copy()
-            }
-            
-            self.processing_df = self.df.iloc[6:].reset_index(drop=True)
-            
-            for col in self.processing_df.columns:
-                self.processing_df[col] = self.processing_df[col].apply(self.clean_cell)
-            
-            self.fixed_column = self.processing_df.iloc[:, 0].values
-            self.next_column_button.setEnabled(True)
-            self.load_column(1)
+            try:
+                if file_path.endswith('.csv'):
+                    self.df = pd.read_csv(file_path, header=None)
+                else:
+                    self.df = pd.read_excel(file_path, header=None)
+                
+                # Row 1: element names (هدر اصلی)
+                self.header_row = self.df.iloc[1].copy()
+                
+                # Reserved rows: 2,3,4,5
+                self.reserved_rows = {
+                    2: self.df.iloc[2].copy(),
+                    3: self.df.iloc[3].copy(),
+                    4: self.df.iloc[4].copy(),
+                    5: self.df.iloc[5].copy()
+                }
+                
+                self.processing_df = self.df.iloc[6:].reset_index(drop=True)
+                
+                for col in self.processing_df.columns:
+                    self.processing_df[col] = self.processing_df[col].apply(self.clean_cell)
+                
+                self.fixed_column = self.processing_df.iloc[:, 0].values
+                self.next_column_button.setEnabled(True)
+                self.load_column(1)
+                self.status_bar.showMessage(f"Loaded file: {file_path}")
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to load file: {str(e)}")
+                self.status_bar.showMessage("Error loading file")
 
     def clean_cell(self, cell):
         if isinstance(cell, str):
@@ -317,6 +442,7 @@ class DataProcessor(QMainWindow):
         # نمایش نام عنصر
         element_name = self.get_current_element_name()
         self.element_label.setText(f"Element: {element_name}")
+        self.status_bar.showMessage(f"Loaded column {col_index}: {element_name}")
 
     def next_column(self):
         self.save_current_modified()
@@ -342,10 +468,10 @@ class DataProcessor(QMainWindow):
         self.current_column_data['Modified'] = modified
 
     def fill_empty_cells(self):
-        min_val = float(self.min_edit.text())
-        max_val = float(self.max_edit.text())
-        offset = float(self.offset_edit.text())
-        ratio = float(self.ratio_edit.text())
+        min_val = self.min_spin.value()
+        max_val = self.max_spin.value()
+        offset = self.offset_spin.value()
+        ratio = self.ratio_spin.value()
         apply_filled = self.apply_filled_checkbox.isChecked()
         apply_ratio_filled = self.apply_ratio_checkbox.isChecked()
 
@@ -367,22 +493,25 @@ class DataProcessor(QMainWindow):
                     item = QTableWidgetItem()
                     self.table.setItem(i, 2, item)
                 item.setText(str(new_val))
+        self.status_bar.showMessage("Filled empty cells")
 
     def check_duplicates(self):
         selected_items = self.table.selectedItems()
         if not selected_items:
+            self.status_bar.showMessage("No rows selected for duplicates")
             return
         
         selected_rows = set(item.row() for item in selected_items if item.row() != self.crm_reference_row)
         
         values = [self.current_column_data.at[row, 'Original'] for row in selected_rows 
-                 if self.current_column_data.at[row, 'Original'] is not None and isinstance(self.current_column_data.at[row, 'Original'], (int, float))]
+                  if self.current_column_data.at[row, 'Original'] is not None and isinstance(self.current_column_data.at[row, 'Original'], (int, float))]
         
         if not values:
+            self.status_bar.showMessage("No valid values in selected rows")
             return
         
         mean_val = sum(values) / len(values)
-        dup_range = float(self.dup_range_edit.text())
+        dup_range = self.dup_range_spin.value()
 
         light_yellow = QColor(255, 255, 150)
         light_red = QColor(255, 180, 180)
@@ -400,21 +529,23 @@ class DataProcessor(QMainWindow):
                     item = self.table.item(row, col)
                     if item:
                         item.setBackground(QBrush(light_red))
+        self.status_bar.showMessage("Checked duplicates")
 
     def fix_duplicates(self):
         selected_items = self.table.selectedItems()
         if not selected_items:
+            self.status_bar.showMessage("No rows selected for fixing duplicates")
             return
         
         selected_rows = set(item.row() for item in selected_items if item.row() != self.crm_reference_row)
         values = [self.current_column_data.at[row, 'Original'] for row in selected_rows 
-                 if self.current_column_data.at[row, 'Original'] is not None and isinstance(self.current_column_data.at[row, 'Original'], (int, float))]
+                  if self.current_column_data.at[row, 'Original'] is not None and isinstance(self.current_column_data.at[row, 'Original'], (int, float))]
         if not values:
             return
         mean_val = sum(values) / len(values)
         
-        min_val = float(self.min_edit.text())
-        max_val = float(self.max_edit.text())
+        min_val = self.min_spin.value()
+        max_val = self.max_spin.value()
         
         light_red = QColor(255, 180, 180)
         light_green = QColor(180, 255, 180)
@@ -443,6 +574,7 @@ class DataProcessor(QMainWindow):
                         mod_item = QTableWidgetItem()
                         self.table.setItem(row, 2, mod_item)
                     mod_item.setText(str(orig_val))
+        self.status_bar.showMessage("Fixed duplicates")
 
     def remove_crm_reference_row(self):
         if self.crm_reference_row is not None:
@@ -476,7 +608,7 @@ class DataProcessor(QMainWindow):
             return
         
         crm_903_val = self.crm_903[element_name]
-        crm_range = float(self.crm_range_edit.text())
+        crm_range = self.crm_range_spin.value()
 
         light_green = QColor(180, 255, 180)
         light_red = QColor(255, 180, 180)
@@ -512,8 +644,8 @@ class DataProcessor(QMainWindow):
                 item = self.table.item(self.crm_row, col)
                 if item:
                     item.setBackground(QBrush(color))
-
         self.clear_crm_button.setEnabled(True)
+        self.status_bar.showMessage("Compared with CRM 903")
 
     def fix_crm_differences(self):
         if self.crm_row is None or self.crm_reference_row is None:
@@ -525,7 +657,7 @@ class DataProcessor(QMainWindow):
             return
         
         crm_903_val = self.crm_903[element_name]
-        crm_range = float(self.crm_range_edit.text())
+        crm_range = self.crm_range_spin.value()
         min_factor = 1.0 - crm_range
         max_factor = 1.0 + crm_range
 
@@ -547,6 +679,7 @@ class DataProcessor(QMainWindow):
                 item.setBackground(QBrush(light_green))
 
         self.remove_crm_reference_row()
+        self.status_bar.showMessage("Fixed CRM differences")
 
     def clear_crm_row(self):
         self.remove_crm_reference_row()
@@ -556,6 +689,7 @@ class DataProcessor(QMainWindow):
                 if item:
                     item.setBackground(QBrush(QColor("white")))
             self.crm_row = None
+        self.status_bar.showMessage("Cleared CRM row")
 
     def apply_limits(self):
         limit_row = self.reserved_rows[3]
@@ -575,6 +709,7 @@ class DataProcessor(QMainWindow):
                     item = self.table.item(i, 2)
                     if item:
                         item.setText(new_val)
+        self.status_bar.showMessage("Applied limits")
 
     def finalize_data(self):
         self.save_current_modified()
@@ -597,9 +732,11 @@ class DataProcessor(QMainWindow):
         if save_path:
             full_df.to_csv(save_path, index=False, header=False)
             QMessageBox.information(self, "Saved", "File saved successfully.")
+            self.status_bar.showMessage(f"Saved file: {save_path}")
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    app.setFont(QFont("Arial", 10))
     window = DataProcessor()
     window.show()
     sys.exit(app.exec())
