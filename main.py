@@ -307,7 +307,7 @@ class DataProcessor(QMainWindow):
         flat_values = []
         for row in rows:
             flat_values.extend([v.strip() for v in row if v.strip()])
-       
+    
         if not flat_values:
             return
         current = self.table.currentIndex()
@@ -323,10 +323,7 @@ class DataProcessor(QMainWindow):
             start_col = 2
             col_index = self.current_column_index
         num_rows = self.table.rowCount()
-        if self.crm_reference_row is None:
-            num_before = 0
-        else:
-            num_before = 1 if start_row > self.crm_reference_row else 0
+        
         for i, val_str in enumerate(flat_values):
             row = start_row + i
             if row >= num_rows:
@@ -340,7 +337,11 @@ class DataProcessor(QMainWindow):
                 item = QTableWidgetItem()
                 self.table.setItem(row, start_col, item)
             item.setText(str(val))
-            num_before = sum(1 for r in [self.crm_reference_row] if r < row and r is not None)
+            
+            # --- FIXED LINE BELOW ---
+            num_before = sum(1 for r in [self.crm_reference_row] if r is not None and r < row)
+            # -------------------------
+            
             actual_row = row - num_before
             if actual_row < len(self.processed_columns.get(col_index, [])):
                 self.processed_columns[col_index][actual_row] = val
@@ -532,34 +533,50 @@ class DataProcessor(QMainWindow):
                 mod_item = QTableWidgetItem(str(mod_val) if mod_val is not None else "")
                 mod_item.setFlags(Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
                 self.table.setItem(i, col_index, mod_item)
+                
     def fill_empty_cells(self):
         if self.all_processed_mode:
-            return # Fill not available in all mode
+            return  # Fill not available in all mode
+
         min_val = self.min_spin.value()
         max_val = self.max_spin.value()
         offset = self.offset_spin.value()
         ratio = self.ratio_spin.value()
         apply_filled = self.apply_filled_checkbox.isChecked()
         apply_ratio_filled = self.apply_ratio_checkbox.isChecked()
+
         for i in range(len(self.current_column_data)):
             original = self.current_column_data.at[i, 'Original']
+            modified = self.current_column_data.at[i, 'Modified']
+
+            # فقط اگر سلول خالی باشه (None) و یا کاربر خواسته باشه روی پرها هم اعمال بشه
+            if modified is not None and not apply_filled:
+                continue  # این سلول پر است و نباید تغییر کند
+
+            # فقط اگر Original مقدار معتبر داشته باشد
             if pd.isna(original) or not isinstance(original, (int, float)):
                 continue
-           
-            modified = self.current_column_data.at[i, 'Modified']
-            if modified is None or apply_filled:
-                rand_factor = random.uniform(min_val, max_val)
-                new_val = (original * rand_factor) + offset
-                if apply_ratio_filled or modified is None:
-                    new_val *= ratio
-                new_val = round(new_val, 2)
-                self.current_column_data.at[i, 'Modified'] = new_val
-                item = self.table.item(i, 2)
-                if not item:
-                    item = QTableWidgetItem()
-                    self.table.setItem(i, 2, item)
-                item.setText(str(new_val))
+
+            # محاسبه مقدار جدید
+            rand_factor = random.uniform(min_val, max_val)
+            new_val = (original * rand_factor) + offset
+
+            # اعمال ratio: فقط روی سلول‌های خالی، یا اگر کاربر خواسته
+            if modified is None or apply_ratio_filled:
+                new_val *= ratio
+
+            new_val = round(new_val, 2)
+
+            # ذخیره در دیتافریم و جدول
+            self.current_column_data.at[i, 'Modified'] = new_val
+            item = self.table.item(i, 2)
+            if not item:
+                item = QTableWidgetItem()
+                self.table.setItem(i, 2, item)
+            item.setText(str(new_val))
+
         self.status_bar.showMessage("Filled empty cells")
+
     def global_check_duplicates(self):
         col_data = self.column_combo.currentData()
         if col_data is None:
