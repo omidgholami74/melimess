@@ -829,7 +829,7 @@ class DataProcessor(QMainWindow):
         else:
             self.apply_limits_to_column(col_data)
     def apply_limits_to_column(self, col_index):
-        limit_row = self.reserved_rows[4]
+        limit_row = self.reserved_rows[3]
         limit_val = limit_row[col_index] if not pd.isna(limit_row[col_index]) else None
         if limit_val is None or not isinstance(limit_val, (int, float)):
             return
