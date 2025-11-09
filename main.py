@@ -797,7 +797,7 @@ class DataProcessor(QMainWindow):
         max_factor = 1.0 + crm_range
         light_green = QColor(180, 255, 180)
         rand_factor = random.uniform(min_factor, max_factor)
-        new_val = round(crm_903_val * rand_factor, 6)
+        new_val = round(crm_903_val * rand_factor, 2)
         self.processed_columns[col_index][self.crm_original_row] = new_val
         table_crm_row = self.get_table_row_from_original(self.crm_original_row)
         mod_item = self.table.item(table_crm_row, table_col)
