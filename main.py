@@ -229,10 +229,16 @@ class DataProcessor(QMainWindow):
         self.global_apply_limits_button.clicked.connect(self.global_apply_limits)
         self.global_apply_limits_button.setToolTip("Apply limits from row 4 to modified values in selected column")
         global_limits_layout.addWidget(self.global_apply_limits_button)
+        global_layout.addWidget(global_limits_group)
         left_layout.addWidget(self.global_group)
         # Actions Group
         actions_group = QGroupBox("Actions")
         actions_layout = QVBoxLayout(actions_group)
+        self.apply_limits_button = QPushButton("Apply Limits to All Columns")
+        self.apply_limits_button.clicked.connect(self.apply_limits_to_all)
+        self.apply_limits_button.setToolTip("Apply limits from row 4 to modified values in all columns")
+        self.apply_limits_button.setEnabled(False)
+        actions_layout.addWidget(self.apply_limits_button)
         self.finalize_button = QPushButton("Finalize and Save")
         self.finalize_button.clicked.connect(self.finalize_data)
         self.finalize_button.setToolTip("Save processed data to Excel")
@@ -263,8 +269,9 @@ class DataProcessor(QMainWindow):
         self.current_column_index = 0
         self.current_column_data = None
         self.fixed_column = None
-        self.crm_rows = {}
-        self.reference_rows = {}
+        self.crm_original_row = None
+        self.crm_reference_row = None
+        self.crm_compared_columns = set()
         self.all_processed_mode = False
         # CRM 903 - OREAS 903 values by element name
         self.crm_903 = {
@@ -316,7 +323,10 @@ class DataProcessor(QMainWindow):
             start_col = 2
             col_index = self.current_column_index
         num_rows = self.table.rowCount()
-        reference_list = sorted(self.reference_rows.values())
+        if self.crm_reference_row is None:
+            num_before = 0
+        else:
+            num_before = 1 if start_row > self.crm_reference_row else 0
         for i, val_str in enumerate(flat_values):
             row = start_row + i
             if row >= num_rows:
@@ -330,7 +340,7 @@ class DataProcessor(QMainWindow):
                 item = QTableWidgetItem()
                 self.table.setItem(row, start_col, item)
             item.setText(str(val))
-            num_before = sum(1 for r in reference_list if r < row)
+            num_before = sum(1 for r in [self.crm_reference_row] if r < row and r is not None)
             actual_row = row - num_before
             if actual_row < len(self.processed_columns.get(col_index, [])):
                 self.processed_columns[col_index][actual_row] = val
@@ -398,8 +408,7 @@ class DataProcessor(QMainWindow):
             'Modified': modified
         })
        
-        if col_index in self.reference_rows:
-            self.remove_crm_reference_row(col_index)
+        self.remove_crm_reference_row()
        
         self.table.setRowCount(num_rows)
         self.table.setColumnCount(3)
@@ -456,10 +465,8 @@ class DataProcessor(QMainWindow):
         if self.all_processed_mode:
             return
         modified = []
-        col_index = self.current_column_index
-        ref_row = self.reference_rows.get(col_index)
         for i in range(self.table.rowCount()):
-            if ref_row is not None and i == ref_row:
+            if self.crm_reference_row is not None and i == self.crm_reference_row:
                 continue
             item = self.table.item(i, 2)
             text = item.text().strip() if item else ""
@@ -468,30 +475,13 @@ class DataProcessor(QMainWindow):
             except ValueError:
                 val = text if text else None
             modified.append(val)
-        self.processed_columns[col_index] = modified
+        self.processed_columns[self.current_column_index] = modified
         self.current_column_data['Modified'] = modified
-    def save_all_modified(self):
-        if not self.all_processed_mode:
-            return
-        original_num_rows = len(self.fixed_column)
-        reference_set = set(self.reference_rows.values())
-        for col_index in range(1, self.table.columnCount()):
-            modified = []
-            for i in range(self.table.rowCount()):
-                if i in reference_set:
-                    continue
-                item = self.table.item(i, col_index)
-                text = item.text().strip() if item else ""
-                try:
-                    val = float(text) if text else None
-                except ValueError:
-                    val = text if text else None
-                modified.append(val)
-            self.processed_columns[col_index] = modified[:original_num_rows]
     def check_all_columns_processed(self):
         num_columns = len(self.processing_df.columns) - 1 # excluding fixed column
         if len(self.processed_columns) == num_columns:
             self.global_group.setEnabled(True)
+            self.apply_limits_button.setEnabled(True)
             self.column_combo.clear()
             self.column_combo.addItem("All", None)
             for col_index in range(1, len(self.processing_df.columns)):
@@ -504,6 +494,7 @@ class DataProcessor(QMainWindow):
             self.status_bar.showMessage("All columns processed. Showing all modified columns.")
         else:
             self.global_group.setEnabled(False)
+            self.apply_limits_button.setEnabled(False)
     def load_all_processed(self):
         self.table.clear()
         num_rows = len(self.fixed_column)
@@ -559,15 +550,13 @@ class DataProcessor(QMainWindow):
         else:
             self.check_duplicates(col_data)
     def check_duplicates(self, col_index):
-        if not self.all_processed_mode:
-            self.load_column(col_index)
         table_col = 2 if not self.all_processed_mode else col_index
         selected_items = self.table.selectedItems()
         if not selected_items:
             self.status_bar.showMessage("No rows selected for duplicates")
             return
        
-        selected_rows = set(item.row() for item in selected_items if item.column() == table_col)
+        selected_rows = set(item.row() for item in selected_items if item.column() == table_col and item.row() != self.crm_reference_row)
         orig_selected_rows = {self.get_original_row_from_table(row) for row in selected_rows}
        
         originals = self.processing_df.iloc[:, col_index]
@@ -601,15 +590,13 @@ class DataProcessor(QMainWindow):
         else:
             self.fix_duplicates(col_data)
     def fix_duplicates(self, col_index):
-        if not self.all_processed_mode:
-            self.load_column(col_index)
         table_col = 2 if not self.all_processed_mode else col_index
         selected_items = self.table.selectedItems()
         if not selected_items:
             self.status_bar.showMessage("No rows selected for fixing duplicates")
             return
        
-        selected_rows = set(item.row() for item in selected_items if item.column() == table_col)
+        selected_rows = set(item.row() for item in selected_items if item.column() == table_col and item.row() != self.crm_reference_row)
         orig_selected_rows = {self.get_original_row_from_table(row) for row in selected_rows}
         originals = self.processing_df.iloc[:, col_index]
         values = [originals[row] for row in orig_selected_rows
@@ -640,21 +627,14 @@ class DataProcessor(QMainWindow):
                     self.processed_columns[col_index][orig_row] = orig_val
                     mod_item.setText(str(orig_val))
         self.status_bar.showMessage("Fixed duplicates")
-    def remove_crm_reference_row(self, col_index):
-        if col_index not in self.reference_rows:
+    def remove_crm_reference_row(self):
+        if self.crm_reference_row is None:
             return
-        ref_row = self.reference_rows[col_index]
-        self.table.removeRow(ref_row)
-        # Update other references and crms
-        for c in list(self.reference_rows):
-            if self.reference_rows[c] > ref_row:
-                self.reference_rows[c] -= 1
-        for c in list(self.crm_rows):
-            if self.crm_rows[c] > ref_row:  # crm_rows is original, but since original doesn't change, but table rows do? Wait, crm_rows is original, so no need to update.
-                pass
-        del self.reference_rows[col_index]
-        del self.crm_rows[col_index]
-        self.update_clear_crm_button()
+        self.table.removeRow(self.crm_reference_row)
+        self.crm_reference_row = None
+        self.crm_original_row = None
+        self.crm_compared_columns.clear()
+        self.global_clear_crm_button.setEnabled(False)
     def global_compare_with_crm(self):
         col_data = self.column_combo.currentData()
         if col_data is None:
@@ -668,56 +648,69 @@ class DataProcessor(QMainWindow):
                 return
             table_crm_row = next(iter(selected_rows))
             crm_row = self.get_original_row_from_table(table_crm_row)
+            if self.crm_original_row is None:
+                self.crm_original_row = crm_row
+            elif self.crm_original_row != crm_row:
+                QMessageBox.warning(self, "Error", "CRM row must be the same for all columns.")
+                return
+            if self.crm_reference_row is None:
+                insert_row = table_crm_row + 1
+                self.table.insertRow(insert_row)
+                self.crm_reference_row = insert_row
+                fixed_item = QTableWidgetItem("CRM 903")
+                fixed_item.setBackground(QBrush(QColor(200, 200, 255)))
+                fixed_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                self.table.setItem(insert_row, 0, fixed_item)
+            else:
+                insert_row = self.crm_reference_row
             for col_index in range(1, len(self.processing_df.columns)):
-                self.compare_with_crm(col_index, crm_row)
+                self.compare_with_crm_single(col_index, crm_row, insert_row)
+            self.global_clear_crm_button.setEnabled(True)
         else:
-            self.compare_with_crm(col_data)
-        self.update_clear_crm_button()
-    def compare_with_crm(self, col_index, crm_row=None):
-        if not self.all_processed_mode:
-            self.load_column(col_index)
-        table_col = 2 if not self.all_processed_mode else col_index
-        if crm_row is None:
+            table_col = 2 if not self.all_processed_mode else col_data
             selected_items = self.table.selectedItems()
             if not selected_items:
                 QMessageBox.warning(self, "Error", "Please select at least one row.")
                 return
-            selected_rows = set(item.row() for item in selected_items if item.column() == table_col)
+            selected_rows = set(item.row() for item in selected_items if item.column() == table_col and item.row() != self.crm_reference_row)
             if len(selected_rows) != 1:
                 QMessageBox.warning(self, "Error", "Please select exactly one row for CRM comparison.")
                 return
             table_crm_row = next(iter(selected_rows))
             crm_row = self.get_original_row_from_table(table_crm_row)
+            if self.crm_original_row is None:
+                self.crm_original_row = crm_row
+            elif self.crm_original_row != crm_row:
+                QMessageBox.warning(self, "Error", "CRM row must be the same for all columns.")
+                return
+            if self.crm_reference_row is None:
+                insert_row = table_crm_row + 1
+                self.table.insertRow(insert_row)
+                self.crm_reference_row = insert_row
+                fixed_item = QTableWidgetItem("CRM 903")
+                fixed_item.setBackground(QBrush(QColor(200, 200, 255)))
+                fixed_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                self.table.setItem(insert_row, 0, fixed_item)
+            else:
+                insert_row = self.crm_reference_row
+            self.compare_with_crm_single(col_data, crm_row, insert_row)
+            self.global_clear_crm_button.setEnabled(True)
+    def compare_with_crm_single(self, col_index, crm_row, insert_row):
+        if col_index in self.crm_compared_columns:
+            return
+        element_name = self.get_element_name(col_index)
+        if element_name not in self.crm_903:
+            return
+        crm_903_val = self.crm_903[element_name]
         originals = self.processing_df.iloc[:, col_index]
         crm_original = originals[crm_row]
         if crm_original is None or not isinstance(crm_original, (int, float)):
-            QMessageBox.warning(self, "Error", "Selected CRM row has no valid Original value.")
             return
-        # نام عنصر از سطر 1
-        element_name = self.get_element_name(col_index)
-        if element_name not in self.crm_903:
-            QMessageBox.warning(self, "Error", f"CRM 903 value not available for element: {element_name}")
-            return
-       
-        crm_903_val = self.crm_903[element_name]
         crm_range = self.global_crm_range_spin.value()
         light_green = QColor(180, 255, 180)
         light_red = QColor(255, 180, 180)
-        self.remove_crm_reference_row(col_index)
+        table_col = 2 if not self.all_processed_mode else col_index
         table_crm_row = self.get_table_row_from_original(crm_row)
-        insert_row = table_crm_row + 1
-        self.table.insertRow(insert_row)
-        # Update other references
-        for c in list(self.reference_rows):
-            if self.reference_rows[c] >= insert_row:
-                self.reference_rows[c] += 1
-        self.reference_rows[col_index] = insert_row
-        self.crm_rows[col_index] = crm_row  # original
-        # Set items
-        fixed_item = QTableWidgetItem("CRM 903")
-        fixed_item.setBackground(QBrush(QColor(200, 200, 255)))
-        fixed_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-        self.table.setItem(insert_row, 0, fixed_item)
         if not self.all_processed_mode:
             orig_item = QTableWidgetItem(str(crm_903_val))
             orig_item.setBackground(QBrush(QColor(200, 200, 255)))
@@ -732,12 +725,6 @@ class DataProcessor(QMainWindow):
             crm_item.setBackground(QBrush(QColor(200, 200, 255)))
             crm_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
             self.table.setItem(insert_row, col_index, crm_item)
-            for c in range(1, self.table.columnCount()):
-                if c != col_index:
-                    empty_item = QTableWidgetItem("")
-                    empty_item.setBackground(QBrush(QColor(200, 200, 255)))
-                    empty_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-                    self.table.setItem(insert_row, c, empty_item)
         mod_item = self.table.item(table_crm_row, table_col)
         if mod_item:
             try:
@@ -750,18 +737,18 @@ class DataProcessor(QMainWindow):
                 self.table.item(table_crm_row, 0).setBackground(QBrush(color))
             except ValueError:
                 pass
+        self.crm_compared_columns.add(col_index)
         self.status_bar.showMessage("Compared with CRM 903")
     def global_fix_crm_differences(self):
         col_data = self.column_combo.currentData()
         if col_data is None:
             for col_index in range(1, len(self.processing_df.columns)):
-                if col_index in self.crm_rows:
-                    self.fix_crm_differences(col_index)
+                self.fix_crm_differences(col_index)
         else:
             self.fix_crm_differences(col_data)
     def fix_crm_differences(self, col_index):
-        if col_index not in self.crm_rows:
-            QMessageBox.warning(self, "Error", "No CRM row selected for this column. Use 'Compare with CRM 903' first.")
+        if self.crm_original_row is None or col_index not in self.crm_compared_columns:
+            QMessageBox.warning(self, "Error", "No CRM comparison done for this column.")
             return
        
         table_col = 2 if not self.all_processed_mode else col_index
@@ -776,9 +763,8 @@ class DataProcessor(QMainWindow):
         light_green = QColor(180, 255, 180)
         rand_factor = random.uniform(min_factor, max_factor)
         new_val = round(crm_903_val * rand_factor, 6)
-        crm_row = self.crm_rows[col_index]  # original
-        self.processed_columns[col_index][crm_row] = new_val
-        table_crm_row = self.get_table_row_from_original(crm_row)
+        self.processed_columns[col_index][self.crm_original_row] = new_val
+        table_crm_row = self.get_table_row_from_original(self.crm_original_row)
         mod_item = self.table.item(table_crm_row, table_col)
         if mod_item is None:
             mod_item = QTableWidgetItem()
@@ -786,46 +772,48 @@ class DataProcessor(QMainWindow):
         mod_item.setText(str(new_val))
         mod_item.setBackground(QBrush(light_green))
         self.table.item(table_crm_row, 0).setBackground(QBrush(light_green))
-        self.remove_crm_reference_row(col_index)
         self.status_bar.showMessage("Fixed CRM differences")
     def global_clear_crm_row(self):
         col_data = self.column_combo.currentData()
         if col_data is None:
-            for col_index in range(1, len(self.processing_df.columns)):
-                self.clear_crm_row(col_index)
+            self.remove_crm_reference_row()
         else:
-            self.clear_crm_row(col_data)
+            self.clear_crm_column(col_data)
         self.update_clear_crm_button()
-    def clear_crm_row(self, col_index):
-        if col_index not in self.crm_rows:
+    def clear_crm_column(self, col_index):
+        if self.crm_original_row is None or col_index not in self.crm_compared_columns:
             return
         table_col = 2 if not self.all_processed_mode else col_index
-        crm_row = self.crm_rows[col_index]
-        table_crm_row = self.get_table_row_from_original(crm_row)
+        table_crm_row = self.get_table_row_from_original(self.crm_original_row)
         self.table.item(table_crm_row, table_col).setBackground(QBrush(QColor("white")))
         self.table.item(table_crm_row, 0).setBackground(QBrush(QColor("white")))
         if not self.all_processed_mode:
             self.table.item(table_crm_row, 1).setBackground(QBrush(QColor("white")))
-        self.remove_crm_reference_row(col_index)
-        self.status_bar.showMessage("Cleared CRM row")
+        self.table.setItem(self.crm_reference_row, table_col, QTableWidgetItem(""))
+        self.crm_compared_columns.remove(col_index)
+        if not self.crm_compared_columns:
+            self.remove_crm_reference_row()
+        self.status_bar.showMessage("Cleared CRM for column")
     def update_clear_crm_button(self):
         col_data = self.column_combo.currentData()
         if col_data is None:
-            self.global_clear_crm_button.setEnabled(bool(self.reference_rows))
+            self.global_clear_crm_button.setEnabled(self.crm_reference_row is not None)
         else:
-            self.global_clear_crm_button.setEnabled(col_data in self.reference_rows)
+            self.global_clear_crm_button.setEnabled(col_data in self.crm_compared_columns)
+    def apply_limits_to_all(self):
+        for col_index in range(1, len(self.processing_df.columns)):
+            self.apply_limits_to_column(col_index)
+        self.status_bar.showMessage("Applied limits to all columns")
     def global_apply_limits(self):
         col_data = self.column_combo.currentData()
         if col_data is None:
-            for col_index in range(1, len(self.processing_df.columns)):
-                self.apply_limits_to_column(col_index)
+            self.apply_limits_to_all()
         else:
             self.apply_limits_to_column(col_data)
     def apply_limits_to_column(self, col_index):
-        limit_row = self.reserved_rows[4]
+        limit_row = self.reserved_rows[3]
         limit_val = limit_row[col_index] if not pd.isna(limit_row[col_index]) else None
         if limit_val is None or not isinstance(limit_val, (int, float)):
-            self.status_bar.showMessage("No valid limit for selected column")
             return
         mods = self.processed_columns[col_index]
         table_col = 2 if not self.all_processed_mode else col_index
@@ -835,23 +823,19 @@ class DataProcessor(QMainWindow):
                 if mod_val < limit_val:
                     new_val = f"<{limit_val}"
                     mods[i] = new_val
-                    table_row = self.get_table_row_from_original(i) if self.all_processed_mode else i
+                    table_row = self.get_table_row_from_original(i)
                     item = self.table.item(table_row, table_col)
                     if item:
                         item.setText(new_val)
         self.status_bar.showMessage(f"Applied limits to column: {self.get_element_name(col_index)}")
     def get_table_row_from_original(self, orig_row):
-        if not self.all_processed_mode:
+        if not self.all_processed_mode or self.crm_reference_row is None:
             return orig_row
-        reference_list = sorted(self.reference_rows.values())
-        num_before = sum(1 for r in reference_list if r <= orig_row)
-        return orig_row + num_before
+        return orig_row + 1 if orig_row >= self.crm_original_row else orig_row
     def get_original_row_from_table(self, table_row):
-        if not self.all_processed_mode:
+        if not self.all_processed_mode or self.crm_reference_row is None:
             return table_row
-        reference_list = sorted(self.reference_rows.values())
-        num_before = sum(1 for r in reference_list if r < table_row)
-        return table_row - num_before
+        return table_row - 1 if table_row > self.crm_reference_row else table_row
     def finalize_data(self):
         if self.all_processed_mode:
             self.save_all_modified()
@@ -878,6 +862,23 @@ class DataProcessor(QMainWindow):
             full_df.to_excel(save_path, index=False, header=False)
             QMessageBox.information(self, "Saved", "File saved successfully.")
             self.status_bar.showMessage(f"Saved file: {save_path}")
+    def save_all_modified(self):
+        if not self.all_processed_mode:
+            return
+        original_num_rows = len(self.fixed_column)
+        for col_index in range(1, self.table.columnCount()):
+            modified = []
+            for i in range(self.table.rowCount()):
+                if self.crm_reference_row is not None and i == self.crm_reference_row:
+                    continue
+                item = self.table.item(i, col_index)
+                text = item.text().strip() if item else ""
+                try:
+                    val = float(text) if text else None
+                except ValueError:
+                    val = text if text else None
+                modified.append(val)
+            self.processed_columns[col_index] = modified
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setFont(QFont("Arial", 10))
