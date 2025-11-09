@@ -152,18 +152,14 @@ class DataProcessor(QMainWindow):
         offset_ratio_layout.addWidget(QLabel("Ratio:"))
         offset_ratio_layout.addWidget(self.ratio_spin)
         fill_layout.addRow(offset_ratio_layout)
-        # Checkboxes
-        checkboxes_layout = QHBoxLayout()
-        self.apply_filled_checkbox = QCheckBox("Apply to filled cells")
-        checkboxes_layout.addWidget(self.apply_filled_checkbox)
-        self.apply_ratio_checkbox = QCheckBox("Apply ratio to filled cells")
-        checkboxes_layout.addWidget(self.apply_ratio_checkbox)
-        fill_layout.addRow(checkboxes_layout)
         self.fill_button = QPushButton("Fill Empty Cells")
         self.fill_button.clicked.connect(self.fill_empty_cells)
         self.fill_button.setToolTip("Fill empty or selected cells with random values in range")
         fill_layout.addRow(self.fill_button)
         left_layout.addWidget(fill_group)
+        # Connect spin boxes for real-time application
+        self.offset_spin.valueChanged.connect(self.apply_ratio_offset_to_filled)
+        self.ratio_spin.valueChanged.connect(self.apply_ratio_offset_to_filled)
         # Global Operations Group (initially disabled)
         self.global_group = QGroupBox("Global Duplicate & CRM Handling")
         self.global_group.setEnabled(False)
@@ -466,6 +462,10 @@ class DataProcessor(QMainWindow):
         element_name = self.get_current_element_name()
         self.element_label.setText(f"Element: {element_name}")
         self.status_bar.showMessage(f"Loaded column {col_index}: {element_name}")
+
+        # Reset ratio and offset to defaults
+        self.ratio_spin.setValue(1.0)
+        self.offset_spin.setValue(0.0)
     def update_navigation_buttons(self):
         if self.all_processed_mode:
             self.prev_column_button.setEnabled(False)
@@ -545,32 +545,22 @@ class DataProcessor(QMainWindow):
         max_val = self.max_spin.value()
         offset = self.offset_spin.value()
         ratio = self.ratio_spin.value()
-        apply_filled = self.apply_filled_checkbox.isChecked()
-        apply_ratio_filled = self.apply_ratio_checkbox.isChecked()
 
         for i in range(len(self.current_column_data)):
             original = self.current_column_data.at[i, 'Original']
             modified = self.current_column_data.at[i, 'Modified']
 
-            # فقط اگر سلول خالی باشه (None) و یا کاربر خواسته باشه روی پرها هم اعمال بشه
-            if modified is not None and not apply_filled:
-                continue  # این سلول پر است و نباید تغییر کند
+            if modified is not None:
+                continue  # Do not change filled cells
 
-            # فقط اگر Original مقدار معتبر داشته باشد
             if pd.isna(original) or not isinstance(original, (int, float)):
                 continue
 
-            # محاسبه مقدار جدید
             rand_factor = random.uniform(min_val, max_val)
             new_val = (original * rand_factor) + offset
-
-            # اعمال ratio: فقط روی سلول‌های خالی، یا اگر کاربر خواسته
-            if modified is None or apply_ratio_filled:
-                new_val *= ratio
-
+            new_val *= ratio
             new_val = round(new_val, 2)
 
-            # ذخیره در دیتافریم و جدول
             self.current_column_data.at[i, 'Modified'] = new_val
             item = self.table.item(i, 2)
             if not item:
@@ -579,6 +569,29 @@ class DataProcessor(QMainWindow):
             item.setText(str(new_val))
 
         self.status_bar.showMessage("Filled empty cells")
+
+    def apply_ratio_offset_to_filled(self):
+        if self.all_processed_mode or self.current_column_data is None:
+            return
+
+        ratio = self.ratio_spin.value()
+        offset = self.offset_spin.value()
+
+        for i in range(len(self.current_column_data)):
+            modified = self.current_column_data.at[i, 'Modified']
+
+            if modified is None or not isinstance(modified, (int, float)):
+                continue
+
+            new_val = (modified * ratio) + offset
+            new_val = round(new_val, 2)
+
+            self.current_column_data.at[i, 'Modified'] = new_val
+            item = self.table.item(i, 2)
+            if item:
+                item.setText(str(new_val))
+
+        self.status_bar.showMessage("Applied ratio and offset to filled cells")
 
     def global_check_duplicates(self):
         col_data = self.column_combo.currentData()
