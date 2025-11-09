@@ -5,17 +5,15 @@ from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QPushButton, QFileDialog, QTableWidget, QTableWidgetItem,
     QLineEdit, QLabel, QCheckBox, QMessageBox, QSplitter,
-    QGroupBox, QFormLayout, QDoubleSpinBox, QStatusBar
+    QGroupBox, QFormLayout, QDoubleSpinBox, QStatusBar, QComboBox
 )
-from PyQt6.QtCore import Qt,QEvent
+from PyQt6.QtCore import Qt, QEvent
 from PyQt6.QtGui import QColor, QBrush, QFont
-
 class DataProcessor(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Data Processor with PyQt6")
         self.setGeometry(100, 100, 1200, 800)
-
         # Set global stylesheet for better UI
         self.setStyleSheet("""
             QMainWindow {
@@ -76,17 +74,20 @@ class DataProcessor(QMainWindow):
                 left: 10px;
                 padding: 0 3px 0 3px;
             }
+            QComboBox {
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                padding: 4px;
+                background-color: white;
+            }
         """)
-
         self.central_widget = QWidget()
         self.setCentralWidget(self.central_widget)
         main_layout = QHBoxLayout(self.central_widget)
-
         # Left panel for controls
         left_panel = QWidget()
         left_layout = QVBoxLayout(left_panel)
         left_layout.setSpacing(10)
-
         # File Group
         file_group = QGroupBox("File Operations")
         file_layout = QVBoxLayout(file_group)
@@ -95,7 +96,6 @@ class DataProcessor(QMainWindow):
         self.load_button.setToolTip("Load a CSV or Excel file to process")
         file_layout.addWidget(self.load_button)
         left_layout.addWidget(file_group)
-
         # Navigation Group
         nav_group = QGroupBox("Column Navigation")
         nav_layout = QVBoxLayout(nav_group)
@@ -104,24 +104,20 @@ class DataProcessor(QMainWindow):
         self.prev_column_button.clicked.connect(self.prev_column)
         self.prev_column_button.setEnabled(False)
         nav_buttons_layout.addWidget(self.prev_column_button)
-
         self.next_column_button = QPushButton("Next Column")
         self.next_column_button.clicked.connect(self.next_column)
         nav_buttons_layout.addWidget(self.next_column_button)
         self.next_column_button.setEnabled(False)
         nav_layout.addLayout(nav_buttons_layout)
-
         # Current element display
         self.element_label = QLabel("Element: -")
         self.element_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #2c3e50;")
         nav_layout.addWidget(self.element_label)
         left_layout.addWidget(nav_group)
-
         # Fill Controls Group
         fill_group = QGroupBox("Fill Empty Cells")
         fill_layout = QFormLayout(fill_group)
         fill_layout.setSpacing(6)
-
         # Min/Max
         min_max_layout = QHBoxLayout()
         self.min_spin = QDoubleSpinBox()
@@ -131,7 +127,6 @@ class DataProcessor(QMainWindow):
         self.min_spin.setSingleStep(0.1)
         min_max_layout.addWidget(QLabel("Min:"))
         min_max_layout.addWidget(self.min_spin)
-
         self.max_spin = QDoubleSpinBox()
         self.max_spin.setValue(1.1)
         self.max_spin.setMinimum(0.0)
@@ -140,7 +135,6 @@ class DataProcessor(QMainWindow):
         min_max_layout.addWidget(QLabel("Max:"))
         min_max_layout.addWidget(self.max_spin)
         fill_layout.addRow(min_max_layout)
-
         # Offset/Ratio
         offset_ratio_layout = QHBoxLayout()
         self.offset_spin = QDoubleSpinBox()
@@ -150,7 +144,6 @@ class DataProcessor(QMainWindow):
         self.offset_spin.setSingleStep(1.0)
         offset_ratio_layout.addWidget(QLabel("Offset:"))
         offset_ratio_layout.addWidget(self.offset_spin)
-
         self.ratio_spin = QDoubleSpinBox()
         self.ratio_spin.setValue(1.0)
         self.ratio_spin.setMinimum(0.0)
@@ -159,7 +152,6 @@ class DataProcessor(QMainWindow):
         offset_ratio_layout.addWidget(QLabel("Ratio:"))
         offset_ratio_layout.addWidget(self.ratio_spin)
         fill_layout.addRow(offset_ratio_layout)
-
         # Checkboxes
         checkboxes_layout = QHBoxLayout()
         self.apply_filled_checkbox = QCheckBox("Apply to filled cells")
@@ -167,85 +159,83 @@ class DataProcessor(QMainWindow):
         self.apply_ratio_checkbox = QCheckBox("Apply ratio to filled cells")
         checkboxes_layout.addWidget(self.apply_ratio_checkbox)
         fill_layout.addRow(checkboxes_layout)
-
         self.fill_button = QPushButton("Fill Empty Cells")
         self.fill_button.clicked.connect(self.fill_empty_cells)
         self.fill_button.setToolTip("Fill empty or selected cells with random values in range")
         fill_layout.addRow(self.fill_button)
         left_layout.addWidget(fill_group)
-
-        # Duplicate Handling Group
-        dup_group = QGroupBox("Duplicate Handling")
-        dup_layout = QFormLayout(dup_group)
-        dup_layout.setSpacing(6)
-
-        self.dup_range_spin = QDoubleSpinBox()
-        self.dup_range_spin.setValue(0.05)
-        self.dup_range_spin.setMinimum(0.0)
-        self.dup_range_spin.setMaximum(1.0)
-        self.dup_range_spin.setSingleStep(0.01)
-        dup_layout.addRow("Duplicate Range:", self.dup_range_spin)
-
-        dup_buttons_layout = QHBoxLayout()
-        self.check_dup_button = QPushButton("Check Duplicates")
-        self.check_dup_button.clicked.connect(self.check_duplicates)
-        self.check_dup_button.setToolTip("Highlight duplicates in selected rows")
-        dup_buttons_layout.addWidget(self.check_dup_button)
-
-        self.fix_dup_button = QPushButton("Fix Duplicates")
-        self.fix_dup_button.clicked.connect(self.fix_duplicates)
-        self.fix_dup_button.setToolTip("Fix highlighted duplicates with average-based values")
-        dup_buttons_layout.addWidget(self.fix_dup_button)
-        dup_layout.addRow(dup_buttons_layout)
-        left_layout.addWidget(dup_group)
-
-        # CRM Handling Group
-        crm_group = QGroupBox("CRM Handling")
-        crm_layout = QFormLayout(crm_group)
-        crm_layout.setSpacing(6)
-
-        self.crm_range_spin = QDoubleSpinBox()
-        self.crm_range_spin.setValue(0.1)
-        self.crm_range_spin.setMinimum(0.0)
-        self.crm_range_spin.setMaximum(1.0)
-        self.crm_range_spin.setSingleStep(0.01)
-        crm_layout.addRow("CRM Range:", self.crm_range_spin)
-
-        crm_buttons_layout = QVBoxLayout()
-        self.compare_crm_button = QPushButton("Compare with CRM 903")
-        self.compare_crm_button.clicked.connect(self.compare_with_crm)
-        self.compare_crm_button.setToolTip("Compare selected row with CRM 903 value")
-        crm_buttons_layout.addWidget(self.compare_crm_button)
-
-        self.fix_crm_button = QPushButton("Fix CRM Differences")
-        self.fix_crm_button.clicked.connect(self.fix_crm_differences)
-        self.fix_crm_button.setToolTip("Adjust selected CRM row to match within range")
-        crm_buttons_layout.addWidget(self.fix_crm_button)
-
-        self.clear_crm_button = QPushButton("Clear CRM Row")
-        self.clear_crm_button.clicked.connect(self.clear_crm_row)
-        self.clear_crm_button.setEnabled(False)
-        self.clear_crm_button.setToolTip("Remove CRM reference row and clear highlights")
-        crm_buttons_layout.addWidget(self.clear_crm_button)
-        crm_layout.addRow(crm_buttons_layout)
-        left_layout.addWidget(crm_group)
-
+        # Global Operations Group (initially disabled)
+        self.global_group = QGroupBox("Global Duplicate & CRM Handling")
+        self.global_group.setEnabled(False)
+        global_layout = QVBoxLayout(self.global_group)
+       
+        # Column selector
+        column_select_layout = QHBoxLayout()
+        self.column_combo = QComboBox()
+        self.column_combo.setToolTip("Select a column to apply operations")
+        column_select_layout.addWidget(QLabel("Select Column:"))
+        column_select_layout.addWidget(self.column_combo)
+        global_layout.addLayout(column_select_layout)
+        # Duplicate Handling for selected column
+        global_dup_group = QGroupBox("Duplicate Handling")
+        global_dup_layout = QFormLayout(global_dup_group)
+        self.global_dup_range_spin = QDoubleSpinBox()
+        self.global_dup_range_spin.setValue(0.05)
+        self.global_dup_range_spin.setMinimum(0.0)
+        self.global_dup_range_spin.setMaximum(1.0)
+        self.global_dup_range_spin.setSingleStep(0.01)
+        global_dup_layout.addRow("Duplicate Range:", self.global_dup_range_spin)
+        global_dup_buttons_layout = QHBoxLayout()
+        self.global_check_dup_button = QPushButton("Check Duplicates")
+        self.global_check_dup_button.clicked.connect(self.global_check_duplicates)
+        self.global_check_dup_button.setToolTip("Highlight duplicates in selected rows for selected column")
+        global_dup_buttons_layout.addWidget(self.global_check_dup_button)
+        self.global_fix_dup_button = QPushButton("Fix Duplicates")
+        self.global_fix_dup_button.clicked.connect(self.global_fix_duplicates)
+        self.global_fix_dup_button.setToolTip("Fix highlighted duplicates with average-based values for selected column")
+        global_dup_buttons_layout.addWidget(self.global_fix_dup_button)
+        global_dup_layout.addRow(global_dup_buttons_layout)
+        global_layout.addWidget(global_dup_group)
+        # CRM Handling for selected column
+        global_crm_group = QGroupBox("CRM Handling")
+        global_crm_layout = QFormLayout(global_crm_group)
+        self.global_crm_range_spin = QDoubleSpinBox()
+        self.global_crm_range_spin.setValue(0.1)
+        self.global_crm_range_spin.setMinimum(0.0)
+        self.global_crm_range_spin.setMaximum(1.0)
+        self.global_crm_range_spin.setSingleStep(0.01)
+        global_crm_layout.addRow("CRM Range:", self.global_crm_range_spin)
+        global_crm_buttons_layout = QVBoxLayout()
+        self.global_compare_crm_button = QPushButton("Compare with CRM 903")
+        self.global_compare_crm_button.clicked.connect(self.global_compare_with_crm)
+        self.global_compare_crm_button.setToolTip("Compare selected row with CRM 903 value for selected column")
+        global_crm_buttons_layout.addWidget(self.global_compare_crm_button)
+        self.global_fix_crm_button = QPushButton("Fix CRM Differences")
+        self.global_fix_crm_button.clicked.connect(self.global_fix_crm_differences)
+        self.global_fix_crm_button.setToolTip("Adjust selected CRM row to match within range for selected column")
+        global_crm_buttons_layout.addWidget(self.global_fix_crm_button)
+        self.global_clear_crm_button = QPushButton("Clear CRM Row")
+        self.global_clear_crm_button.clicked.connect(self.global_clear_crm_row)
+        self.global_clear_crm_button.setEnabled(False)
+        self.global_clear_crm_button.setToolTip("Remove CRM reference row and clear highlights for selected column")
+        global_crm_buttons_layout.addWidget(self.global_clear_crm_button)
+        global_crm_layout.addRow(global_crm_buttons_layout)
+        global_layout.addWidget(global_crm_group)
+        left_layout.addWidget(self.global_group)
         # Actions Group
         actions_group = QGroupBox("Actions")
         actions_layout = QVBoxLayout(actions_group)
-        self.apply_limits_button = QPushButton("Apply Limits < Only")
+        self.apply_limits_button = QPushButton("Apply Limits to All Columns")
         self.apply_limits_button.clicked.connect(self.apply_limits)
-        self.apply_limits_button.setToolTip("Apply limits from row 4 to modified values")
+        self.apply_limits_button.setToolTip("Apply limits from row 4 to modified values in all columns")
+        self.apply_limits_button.setEnabled(False)
         actions_layout.addWidget(self.apply_limits_button)
-
         self.finalize_button = QPushButton("Finalize and Save")
         self.finalize_button.clicked.connect(self.finalize_data)
-        self.finalize_button.setToolTip("Save processed data to CSV")
+        self.finalize_button.setToolTip("Save processed data to Excel")
         actions_layout.addWidget(self.finalize_button)
         left_layout.addWidget(actions_group)
-
         left_layout.addStretch()
-
         # Splitter
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.addWidget(left_panel)
@@ -256,18 +246,15 @@ class DataProcessor(QMainWindow):
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.verticalHeader().setVisible(False)
         splitter.addWidget(self.table)
-        splitter.setSizes([350, 850])  # Slightly wider left panel for better UI
-
+        splitter.setSizes([350, 850]) # Slightly wider left panel for better UI
         main_layout.addWidget(splitter)
-
         # Status bar
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage("Ready")
-
         # Data storage
         self.df = None
-        self.header_row = None  # Row 1: element names (هدر اصلی)
+        self.header_row = None # Row 1: element names (هدر اصلی)
         self.reserved_rows = {}
         self.processed_columns = {}
         self.current_column_index = 0
@@ -275,7 +262,7 @@ class DataProcessor(QMainWindow):
         self.fixed_column = None
         self.crm_row = None
         self.crm_reference_row = None
-
+        self.all_processed_mode = False
         # CRM 903 - OREAS 903 values by element name
         self.crm_903 = {
             'Ag': 0.432001, 'Al': 58903.5, 'As': 49.6558, 'Au': 0.00495, 'Ba': 197.464,
@@ -289,10 +276,8 @@ class DataProcessor(QMainWindow):
             'Te': 0.0344281, 'Th': 13.643, 'Ti': 1924.92, 'Tl': 0.621858, 'U': 7.58033,
             'V': 73.9117, 'W': 0.531139, 'Y': 22.4734, 'Yb': 2.36446, 'Zn': 24.2974, 'Zr': 151.863
         }
-
         # Install event filter for global Ctrl+V
         self.installEventFilter(self)
-
     def eventFilter(self, source, event):
         if event.type() == QEvent.Type.KeyPress:
             key_event = event
@@ -300,30 +285,34 @@ class DataProcessor(QMainWindow):
                 self.paste_from_clipboard()
                 return True
         return super().eventFilter(source, event)
-
     def paste_from_clipboard(self):
         clipboard = QApplication.clipboard()
         mime_data = clipboard.mimeData()
         if not mime_data.hasText():
             return
-
         text = mime_data.text()
         rows = [row.split('\t') for row in text.split('\n') if row.strip()]
         if not rows:
             return
-
         flat_values = []
         for row in rows:
             flat_values.extend([v.strip() for v in row if v.strip()])
-        
+       
         if not flat_values:
             return
-
         current = self.table.currentIndex()
-        start_row = current.row() if current.isValid() and current.column() == 2 else 0
-        col_idx = 2
+        if not current.isValid():
+            return
+        start_row = current.row()
+        if self.all_processed_mode:
+            start_col = current.column()
+            if start_col < 1:
+                return
+            col_index = start_col
+        else:
+            start_col = 2
+            col_index = self.current_column_index
         num_rows = self.table.rowCount()
-
         for i, val_str in enumerate(flat_values):
             row = start_row + i
             if row >= num_rows:
@@ -332,18 +321,17 @@ class DataProcessor(QMainWindow):
                 val = float(val_str)
             except ValueError:
                 val = val_str
-            item = self.table.item(row, col_idx)
+            item = self.table.item(row, start_col)
             if not item:
                 item = QTableWidgetItem()
-                self.table.setItem(row, col_idx, item)
+                self.table.setItem(row, start_col, item)
             item.setText(str(val))
             actual_row = row
             if self.crm_reference_row is not None and row > self.crm_reference_row:
                 actual_row -= 1
-            if actual_row < len(self.current_column_data):
-                self.current_column_data.at[actual_row, 'Modified'] = val
+            if actual_row < len(self.processed_columns.get(col_index, [])):
+                self.processed_columns[col_index][actual_row] = val
         self.status_bar.showMessage("Pasted from clipboard")
-
     def load_file(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Open File", "", "CSV/Excel (*.csv *.xlsx)")
         if file_path:
@@ -352,10 +340,10 @@ class DataProcessor(QMainWindow):
                     self.df = pd.read_csv(file_path, header=None)
                 else:
                     self.df = pd.read_excel(file_path, header=None)
-                
+               
                 # Row 1: element names (هدر اصلی)
                 self.header_row = self.df.iloc[1].copy()
-                
+               
                 # Reserved rows: 2,3,4,5
                 self.reserved_rows = {
                     2: self.df.iloc[2].copy(),
@@ -363,12 +351,12 @@ class DataProcessor(QMainWindow):
                     4: self.df.iloc[4].copy(),
                     5: self.df.iloc[5].copy()
                 }
-                
+               
                 self.processing_df = self.df.iloc[6:].reset_index(drop=True)
-                
+               
                 for col in self.processing_df.columns:
                     self.processing_df[col] = self.processing_df[col].apply(self.clean_cell)
-                
+               
                 self.fixed_column = self.processing_df.iloc[:, 0].values
                 self.next_column_button.setEnabled(True)
                 self.load_column(1)
@@ -376,7 +364,6 @@ class DataProcessor(QMainWindow):
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to load file: {str(e)}")
                 self.status_bar.showMessage("Error loading file")
-
     def clean_cell(self, cell):
         if isinstance(cell, str):
             if cell.startswith('<') or cell.startswith('>'):
@@ -384,75 +371,86 @@ class DataProcessor(QMainWindow):
             elif cell.endswith('<') or cell.endswith('>'):
                 return float(cell[:-1])
         return cell
-
     def get_current_element_name(self):
         """دریافت نام عنصر از سطر 1 (هدر)"""
         if self.header_row is None or self.current_column_index >= len(self.header_row):
             return "Unknown"
         name = str(self.header_row.iloc[self.current_column_index]).strip()
         return name if name else "Unknown"
-
+    def get_element_name(self, col_index):
+        if self.header_row is None or col_index >= len(self.header_row):
+            return "Unknown"
+        name = str(self.header_row.iloc[col_index]).strip()
+        return name if name else "Unknown"
     def load_column(self, col_index):
         if col_index < 1 or col_index >= len(self.processing_df.columns):
             return
-        
+       
         col_data = self.processing_df.iloc[:, col_index].values
         num_rows = len(self.fixed_column)
-        
+       
         modified = self.processed_columns.get(col_index, [None] * num_rows)
         self.current_column_data = pd.DataFrame({
             'Original': col_data,
             'Modified': modified
         })
-        
+       
         self.remove_crm_reference_row()
-        
+       
         self.table.setRowCount(num_rows)
         self.table.setColumnCount(3)
         self.table.setHorizontalHeaderLabels(['Fixed', 'Original', 'Modified'])
-        
+       
         for i in range(num_rows):
             fixed_item = QTableWidgetItem(str(self.fixed_column[i]))
             fixed_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
             self.table.setItem(i, 0, fixed_item)
-            
+           
             orig_val = self.current_column_data.at[i, 'Original']
             if isinstance(orig_val, (int, float)) and not pd.isna(orig_val):
-                if orig_val == int(orig_val):  # عدد صحیح است
+                if orig_val == int(orig_val): # عدد صحیح است
                     orig_text = str(int(orig_val))
-                else:  # اعشار دارد
+                else: # اعشار دارد
                     orig_text = f"{orig_val:.2f}"
             else:
                 orig_text = "" if pd.isna(orig_val) else str(orig_val)
-
             orig_item = QTableWidgetItem(orig_text)
-            
+           
             orig_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
             self.table.setItem(i, 1, orig_item)
-            
+           
             mod_val = self.current_column_data.at[i, 'Modified']
             mod_item = QTableWidgetItem(str(mod_val) if mod_val is not None else "")
             mod_item.setFlags(Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
             self.table.setItem(i, 2, mod_item)
-        
+       
         self.current_column_index = col_index
-        self.prev_column_button.setEnabled(col_index > 1)
-        self.next_column_button.setEnabled(col_index < len(self.processing_df.columns) - 1)
-        
+        self.update_navigation_buttons()
+       
         # نمایش نام عنصر
         element_name = self.get_current_element_name()
         self.element_label.setText(f"Element: {element_name}")
         self.status_bar.showMessage(f"Loaded column {col_index}: {element_name}")
-
+    def update_navigation_buttons(self):
+        if self.all_processed_mode:
+            self.prev_column_button.setEnabled(False)
+            self.next_column_button.setEnabled(False)
+        else:
+            self.prev_column_button.setEnabled(self.current_column_index > 1)
+            self.next_column_button.setEnabled(True)
     def next_column(self):
         self.save_current_modified()
-        self.load_column(self.current_column_index + 1)
-
+        next_index = self.current_column_index + 1
+        if next_index < len(self.processing_df.columns):
+            self.load_column(next_index)
+        else:
+            self.check_all_columns_processed()
     def prev_column(self):
         self.save_current_modified()
         self.load_column(self.current_column_index - 1)
-
     def save_current_modified(self):
+        if self.all_processed_mode:
+            return
         modified = []
         for i in range(self.table.rowCount()):
             if self.crm_reference_row is not None and i == self.crm_reference_row:
@@ -466,20 +464,56 @@ class DataProcessor(QMainWindow):
             modified.append(val)
         self.processed_columns[self.current_column_index] = modified
         self.current_column_data['Modified'] = modified
-
+    def check_all_columns_processed(self):
+        num_columns = len(self.processing_df.columns) - 1 # excluding fixed column
+        if len(self.processed_columns) == num_columns:
+            self.global_group.setEnabled(True)
+            self.apply_limits_button.setEnabled(True)
+            self.column_combo.clear()
+            for col_index in range(1, len(self.processing_df.columns)):
+                element_name = self.get_element_name(col_index)
+                self.column_combo.addItem(element_name, col_index)
+            self.load_all_processed()
+            self.all_processed_mode = True
+            self.update_navigation_buttons()
+            self.element_label.setText("All Elements")
+            self.status_bar.showMessage("All columns processed. Showing all modified columns.")
+        else:
+            self.global_group.setEnabled(False)
+            self.apply_limits_button.setEnabled(False)
+    def load_all_processed(self):
+        self.table.clear()
+        num_rows = len(self.fixed_column)
+        num_cols = len(self.processing_df.columns) # fixed + modified columns (col 0 fixed, 1..n-1 modified)
+        self.table.setRowCount(num_rows)
+        self.table.setColumnCount(num_cols)
+        headers = ['Fixed']
+        for col_index in range(1, num_cols):
+            headers.append(self.get_element_name(col_index))
+        self.table.setHorizontalHeaderLabels(headers)
+        for i in range(num_rows):
+            fixed_item = QTableWidgetItem(str(self.fixed_column[i]))
+            fixed_item.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+            self.table.setItem(i, 0, fixed_item)
+            for col_index in range(1, num_cols):
+                mod_val = self.processed_columns.get(col_index, [None] * num_rows)[i]
+                mod_item = QTableWidgetItem(str(mod_val) if mod_val is not None else "")
+                mod_item.setFlags(Qt.ItemFlag.ItemIsEditable | Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+                self.table.setItem(i, col_index, mod_item)
     def fill_empty_cells(self):
+        if self.all_processed_mode:
+            return # Fill not available in all mode
         min_val = self.min_spin.value()
         max_val = self.max_spin.value()
         offset = self.offset_spin.value()
         ratio = self.ratio_spin.value()
         apply_filled = self.apply_filled_checkbox.isChecked()
         apply_ratio_filled = self.apply_ratio_checkbox.isChecked()
-
         for i in range(len(self.current_column_data)):
             original = self.current_column_data.at[i, 'Original']
             if pd.isna(original) or not isinstance(original, (int, float)):
                 continue
-            
+           
             modified = self.current_column_data.at[i, 'Modified']
             if modified is None or apply_filled:
                 rand_factor = random.uniform(min_val, max_val)
@@ -494,246 +528,269 @@ class DataProcessor(QMainWindow):
                     self.table.setItem(i, 2, item)
                 item.setText(str(new_val))
         self.status_bar.showMessage("Filled empty cells")
-
-    def check_duplicates(self):
+    def global_check_duplicates(self):
+        col_index = self.column_combo.currentData()
+        if col_index is None:
+            return
+        if not self.all_processed_mode:
+            self.load_column(col_index)
+        self.check_duplicates(col_index)
+    def check_duplicates(self, col_index):
+        table_col = 2 if not self.all_processed_mode else col_index
         selected_items = self.table.selectedItems()
         if not selected_items:
             self.status_bar.showMessage("No rows selected for duplicates")
             return
-        
-        selected_rows = set(item.row() for item in selected_items if item.row() != self.crm_reference_row)
-        
-        values = [self.current_column_data.at[row, 'Original'] for row in selected_rows 
-                  if self.current_column_data.at[row, 'Original'] is not None and isinstance(self.current_column_data.at[row, 'Original'], (int, float))]
-        
+       
+        selected_rows = set(item.row() for item in selected_items if item.column() == table_col and item.row() != self.crm_reference_row)
+       
+        originals = self.processing_df.iloc[:, col_index]
+        values = [originals[row] for row in selected_rows
+                  if originals[row] is not None and isinstance(originals[row], (int, float))]
+       
         if not values:
             self.status_bar.showMessage("No valid values in selected rows")
             return
-        
+       
         mean_val = sum(values) / len(values)
-        dup_range = self.dup_range_spin.value()
-
+        dup_range = self.global_dup_range_spin.value()
         light_yellow = QColor(255, 255, 150)
         light_red = QColor(255, 180, 180)
-
         for row in selected_rows:
-            for col in [0, 1, 2]:
-                item = self.table.item(row, col)
-                if item:
-                    item.setBackground(QBrush(light_yellow))
-
+            self.table.item(row, table_col).setBackground(QBrush(light_yellow))
+            self.table.item(row, 0).setBackground(QBrush(light_yellow))
         for row in selected_rows:
-            val = self.current_column_data.at[row, 'Original']
+            val = originals[row]
             if val is not None and isinstance(val, (int, float)) and abs(val - mean_val) > mean_val * dup_range:
-                for col in [0, 1, 2]:
-                    item = self.table.item(row, col)
-                    if item:
-                        item.setBackground(QBrush(light_red))
+                self.table.item(row, table_col).setBackground(QBrush(light_red))
+                self.table.item(row, 0).setBackground(QBrush(light_red))
         self.status_bar.showMessage("Checked duplicates")
-
-    def fix_duplicates(self):
+    def global_fix_duplicates(self):
+        col_index = self.column_combo.currentData()
+        if col_index is None:
+            return
+        if not self.all_processed_mode:
+            self.load_column(col_index)
+        self.fix_duplicates(col_index)
+    def fix_duplicates(self, col_index):
+        table_col = 2 if not self.all_processed_mode else col_index
         selected_items = self.table.selectedItems()
         if not selected_items:
             self.status_bar.showMessage("No rows selected for fixing duplicates")
             return
-        
-        selected_rows = set(item.row() for item in selected_items if item.row() != self.crm_reference_row)
-        values = [self.current_column_data.at[row, 'Original'] for row in selected_rows 
-                  if self.current_column_data.at[row, 'Original'] is not None and isinstance(self.current_column_data.at[row, 'Original'], (int, float))]
+       
+        selected_rows = set(item.row() for item in selected_items if item.column() == table_col and item.row() != self.crm_reference_row)
+        originals = self.processing_df.iloc[:, col_index]
+        values = [originals[row] for row in selected_rows
+                  if originals[row] is not None and isinstance(originals[row], (int, float))]
         if not values:
             return
         mean_val = sum(values) / len(values)
-        
+       
         min_val = self.min_spin.value()
         max_val = self.max_spin.value()
-        
+       
         light_red = QColor(255, 180, 180)
         light_green = QColor(180, 255, 180)
-
         for row in selected_rows:
-            orig_item = self.table.item(row, 1)
-            mod_item = self.table.item(row, 2)
-
-            if orig_item and orig_item.background().color() == light_red:
+            mod_item = self.table.item(row, table_col)
+            orig_val = originals[row]
+            if mod_item and mod_item.background().color() == light_red:
                 rand_factor = random.uniform(min_val, max_val)
                 new_val = round(mean_val * rand_factor, 2)
-                self.current_column_data.at[row, 'Modified'] = new_val
-                if not mod_item:
-                    mod_item = QTableWidgetItem()
-                    self.table.setItem(row, 2, mod_item)
+                self.processed_columns[col_index][row] = new_val
                 mod_item.setText(str(new_val))
                 self.table.item(row, 0).setBackground(QBrush(light_red))
-                self.table.item(row, 1).setBackground(QBrush(light_red))
                 mod_item.setBackground(QBrush(light_green))
             else:
-                mod_val = self.current_column_data.at[row, 'Modified']
-                orig_val = self.current_column_data.at[row, 'Original']
+                mod_val = self.processed_columns[col_index][row]
                 if mod_val is None and orig_val is not None:
-                    self.current_column_data.at[row, 'Modified'] = orig_val
-                    if not mod_item:
-                        mod_item = QTableWidgetItem()
-                        self.table.setItem(row, 2, mod_item)
+                    self.processed_columns[col_index][row] = orig_val
                     mod_item.setText(str(orig_val))
         self.status_bar.showMessage("Fixed duplicates")
-
     def remove_crm_reference_row(self):
         if self.crm_reference_row is not None:
             self.table.removeRow(self.crm_reference_row)
             if self.crm_reference_row <= self.crm_row:
                 self.crm_row -= 1
             self.crm_reference_row = None
-            self.clear_crm_button.setEnabled(False)
-
-    def compare_with_crm(self):
+            self.global_clear_crm_button.setEnabled(False)
+    def global_compare_with_crm(self):
+        col_index = self.column_combo.currentData()
+        if col_index is None:
+            return
+        if not self.all_processed_mode:
+            self.load_column(col_index)
+        self.compare_with_crm(col_index)
+        self.global_clear_crm_button.setEnabled(True)
+    def compare_with_crm(self, col_index):
+        table_col = 2 if not self.all_processed_mode else col_index
         selected_items = self.table.selectedItems()
         if not selected_items:
             QMessageBox.warning(self, "Error", "Please select at least one row.")
             return
-        
-        selected_rows = set(item.row() for item in selected_items if item.row() != self.crm_reference_row)
+       
+        selected_rows = set(item.row() for item in selected_items if item.column() == table_col and item.row() != self.crm_reference_row)
         if len(selected_rows) != 1:
             QMessageBox.warning(self, "Error", "Please select exactly one row for CRM comparison.")
             return
-        
+       
         self.crm_row = next(iter(selected_rows))
-        crm_original = self.current_column_data.at[self.crm_row, 'Original']
+        originals = self.processing_df.iloc[:, col_index]
+        crm_original = originals[self.crm_row]
         if crm_original is None or not isinstance(crm_original, (int, float)):
             QMessageBox.warning(self, "Error", "Selected CRM row has no valid Original value.")
             return
-
         # نام عنصر از سطر 1
-        element_name = self.get_current_element_name()
+        element_name = self.get_element_name(col_index)
         if element_name not in self.crm_903:
             QMessageBox.warning(self, "Error", f"CRM 903 value not available for element: {element_name}")
             return
-        
+       
         crm_903_val = self.crm_903[element_name]
-        crm_range = self.crm_range_spin.value()
-
+        crm_range = self.global_crm_range_spin.value()
         light_green = QColor(180, 255, 180)
         light_red = QColor(255, 180, 180)
-
         self.remove_crm_reference_row()
-
         insert_row = self.crm_row + 1
         self.table.insertRow(insert_row)
         self.crm_reference_row = insert_row
-
+        # For all mode, only set in fixed and the specific column
         fixed_item = QTableWidgetItem("CRM 903")
         fixed_item.setBackground(QBrush(QColor(200, 200, 255)))
         fixed_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
         self.table.setItem(insert_row, 0, fixed_item)
-
-        orig_item = QTableWidgetItem(str(crm_903_val))
-        orig_item.setBackground(QBrush(QColor(200, 200, 255)))
-        orig_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-        self.table.setItem(insert_row, 1, orig_item)
-
-        mod_item = QTableWidgetItem("")
-        mod_item.setBackground(QBrush(QColor(200, 200, 255)))
-        mod_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
-        self.table.setItem(insert_row, 2, mod_item)
-
-        mod_val = self.current_column_data.at[self.crm_row, 'Modified']
-        if mod_val is not None and isinstance(mod_val, (int, float)):
-            if abs(mod_val - crm_903_val) <= crm_903_val * crm_range:
-                color = light_green
-            else:
-                color = light_red
-            for col in [0, 1, 2]:
-                item = self.table.item(self.crm_row, col)
-                if item:
-                    item.setBackground(QBrush(color))
-        self.clear_crm_button.setEnabled(True)
+        if not self.all_processed_mode:
+            orig_item = QTableWidgetItem(str(crm_903_val))
+            orig_item.setBackground(QBrush(QColor(200, 200, 255)))
+            orig_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            self.table.setItem(insert_row, 1, orig_item)
+            mod_item = QTableWidgetItem("")
+            mod_item.setBackground(QBrush(QColor(200, 200, 255)))
+            mod_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            self.table.setItem(insert_row, 2, mod_item)
+        else:
+            # In all mode, set CRM value in the mod column
+            crm_item = QTableWidgetItem(str(crm_903_val))
+            crm_item.setBackground(QBrush(QColor(200, 200, 255)))
+            crm_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            self.table.setItem(insert_row, col_index, crm_item)
+            # Fill other columns with empty items to maintain structure
+            for c in range(1, self.table.columnCount()):
+                if c != col_index:
+                    empty_item = QTableWidgetItem("")
+                    empty_item.setBackground(QBrush(QColor(200, 200, 255)))
+                    empty_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                    self.table.setItem(insert_row, c, empty_item)
+        mod_item = self.table.item(self.crm_row, table_col)
+        if mod_item:
+            try:
+                mod_val = float(mod_item.text())
+                if abs(mod_val - crm_903_val) <= crm_903_val * crm_range:
+                    color = light_green
+                else:
+                    color = light_red
+                mod_item.setBackground(QBrush(color))
+                self.table.item(self.crm_row, 0).setBackground(QBrush(color))
+            except ValueError:
+                pass
         self.status_bar.showMessage("Compared with CRM 903")
-
-    def fix_crm_differences(self):
+    def global_fix_crm_differences(self):
+        col_index = self.column_combo.currentData()
+        if col_index is None:
+            return
+        if not self.all_processed_mode:
+            self.load_column(col_index)
+        self.fix_crm_differences(col_index)
+    def fix_crm_differences(self, col_index):
         if self.crm_row is None or self.crm_reference_row is None:
             QMessageBox.warning(self, "Error", "No CRM row selected. Use 'Compare with CRM 903' first.")
             return
-        
-        element_name = self.get_current_element_name()
+       
+        table_col = 2 if not self.all_processed_mode else col_index
+        element_name = self.get_element_name(col_index)
         if element_name not in self.crm_903:
             return
-        
+       
         crm_903_val = self.crm_903[element_name]
-        crm_range = self.crm_range_spin.value()
+        crm_range = self.global_crm_range_spin.value()
         min_factor = 1.0 - crm_range
         max_factor = 1.0 + crm_range
-
         light_green = QColor(180, 255, 180)
-
         rand_factor = random.uniform(min_factor, max_factor)
         new_val = round(crm_903_val * rand_factor, 6)
-
-        self.current_column_data.at[self.crm_row, 'Modified'] = new_val
-        mod_item = self.table.item(self.crm_row, 2)
+        self.processed_columns[col_index][self.crm_row] = new_val
+        mod_item = self.table.item(self.crm_row, table_col)
         if mod_item is None:
             mod_item = QTableWidgetItem()
-            self.table.setItem(self.crm_row, 2, mod_item)
+            self.table.setItem(self.crm_row, table_col, mod_item)
         mod_item.setText(str(new_val))
-
-        for col in [0, 1, 2]:
-            item = self.table.item(self.crm_row, col)
-            if item:
-                item.setBackground(QBrush(light_green))
-
+        mod_item.setBackground(QBrush(light_green))
+        self.table.item(self.crm_row, 0).setBackground(QBrush(light_green))
         self.remove_crm_reference_row()
         self.status_bar.showMessage("Fixed CRM differences")
-
-    def clear_crm_row(self):
+    def global_clear_crm_row(self):
+        col_index = self.column_combo.currentData()
+        if col_index is None:
+            return
+        if not self.all_processed_mode:
+            self.load_column(col_index)
+        self.clear_crm_row(col_index)
+        self.global_clear_crm_button.setEnabled(False)
+    def clear_crm_row(self, col_index):
+        table_col = 2 if not self.all_processed_mode else col_index
         self.remove_crm_reference_row()
         if self.crm_row is not None:
-            for col in [0, 1, 2]:
-                item = self.table.item(self.crm_row, col)
-                if item:
-                    item.setBackground(QBrush(QColor("white")))
+            self.table.item(self.crm_row, table_col).setBackground(QBrush(QColor("white")))
+            self.table.item(self.crm_row, 0).setBackground(QBrush(QColor("white")))
+            if not self.all_processed_mode:
+                self.table.item(self.crm_row, 1).setBackground(QBrush(QColor("white")))
             self.crm_row = None
         self.status_bar.showMessage("Cleared CRM row")
-
     def apply_limits(self):
-        limit_row = self.reserved_rows[3]
-        col_index = self.current_column_index
-        limit_val = limit_row[col_index] if not pd.isna(limit_row[col_index]) else None
-        
-        if limit_val is None or not isinstance(limit_val, (int, float)):
-            QMessageBox.information(self, "Info", "No valid limit value in row 4 for this column.")
-            return
-
-        for i in range(len(self.current_column_data)):
-            mod_val = self.current_column_data.at[i, 'Modified']
-            if mod_val is not None and isinstance(mod_val, (int, float)):
-                if mod_val < limit_val:
-                    new_val = f"<{limit_val}"
-                    self.current_column_data.at[i, 'Modified'] = new_val
-                    item = self.table.item(i, 2)
-                    if item:
-                        item.setText(new_val)
-        self.status_bar.showMessage("Applied limits")
-
+        limit_row = self.reserved_rows[4]
+        for col_index in range(1, len(self.processing_df.columns)):
+            limit_val = limit_row[col_index] if not pd.isna(limit_row[col_index]) else None
+           
+            if limit_val is None or not isinstance(limit_val, (int, float)):
+                continue
+            mods = self.processed_columns[col_index]
+            table_col = 2 if not self.all_processed_mode else col_index
+            for i in range(len(mods)):
+                mod_val = mods[i]
+                if mod_val is not None and isinstance(mod_val, (int, float)):
+                    if mod_val < limit_val:
+                        new_val = f"<{limit_val}"
+                        mods[i] = new_val
+                        if self.all_processed_mode or self.current_column_index == col_index:
+                            item = self.table.item(i, table_col)
+                            if item:
+                                item.setText(new_val)
+        self.status_bar.showMessage("Applied limits to all columns")
     def finalize_data(self):
-        self.save_current_modified()
-        if len(self.processed_columns) != (len(self.processing_df.columns) - 1):
-            QMessageBox.warning(self, "Error", "Process all columns first.")
-            return
-        
+        if not self.all_processed_mode:
+            self.save_current_modified()
+            num_columns = len(self.processing_df.columns) - 1
+            if len(self.processed_columns) != num_columns:
+                QMessageBox.warning(self, "Error", "Process all columns first.")
+                return
+       
         for col_index, col_data in self.processed_columns.items():
             self.processing_df.iloc[:, col_index] = col_data
-        
+       
         full_df = pd.DataFrame(columns=self.df.columns, index=range(len(self.df)))
-        full_df.iloc[1] = self.header_row  # بازگرداندن هدر اصلی (سطر 1)
+        full_df.iloc[1] = self.header_row # بازگرداندن هدر اصلی (سطر 1)
         full_df.iloc[2] = self.reserved_rows[2]
         full_df.iloc[3] = self.reserved_rows[3]
         full_df.iloc[4] = self.reserved_rows[4]
         full_df.iloc[5] = self.reserved_rows[5]
         full_df.iloc[6:] = self.processing_df.values
-        
-        save_path, _ = QFileDialog.getSaveFileName(self, "Save File", "", "CSV (*.csv)")
+       
+        save_path, _ = QFileDialog.getSaveFileName(self, "Save File", "", "Excel (*.xlsx)")
         if save_path:
-            full_df.to_csv(save_path, index=False, header=False)
+            full_df.to_excel(save_path, index=False, header=False)
             QMessageBox.information(self, "Saved", "File saved successfully.")
             self.status_bar.showMessage(f"Saved file: {save_path}")
-
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     app.setFont(QFont("Arial", 10))
