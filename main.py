@@ -345,9 +345,27 @@ class DataProcessor(QMainWindow):
             if actual_row < len(self.processed_columns.get(col_index, [])):
                 self.processed_columns[col_index][actual_row] = val
         self.status_bar.showMessage("Pasted from clipboard")
+    def reset_data(self):
+        self.df = None
+        self.header_row = None
+        self.reserved_rows = {}
+        self.processed_columns = {}
+        self.current_column_index = 0
+        self.current_column_data = None
+        self.fixed_column = None
+        self.crm_original_row = None
+        self.crm_reference_row = None
+        self.crm_compared_columns = set()
+        self.all_processed_mode = False
+        self.table.clear()
+        self.prev_column_button.setEnabled(False)
+        self.next_column_button.setEnabled(False)
+        self.global_group.setEnabled(False)
+        self.apply_limits_button.setEnabled(False)
     def load_file(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "Open File", "", "CSV/Excel (*.csv *.xlsx)")
         if file_path:
+            self.reset_data()
             try:
                 if file_path.endswith('.csv'):
                     self.df = pd.read_csv(file_path, header=None)
@@ -811,7 +829,7 @@ class DataProcessor(QMainWindow):
         else:
             self.apply_limits_to_column(col_data)
     def apply_limits_to_column(self, col_index):
-        limit_row = self.reserved_rows[3]
+        limit_row = self.reserved_rows[4]
         limit_val = limit_row[col_index] if not pd.isna(limit_row[col_index]) else None
         if limit_val is None or not isinstance(limit_val, (int, float)):
             return
@@ -831,7 +849,7 @@ class DataProcessor(QMainWindow):
     def get_table_row_from_original(self, orig_row):
         if not self.all_processed_mode or self.crm_reference_row is None:
             return orig_row
-        return orig_row + 1 if orig_row >= self.crm_original_row else orig_row
+        return orig_row + 1 if orig_row > self.crm_original_row else orig_row
     def get_original_row_from_table(self, table_row):
         if not self.all_processed_mode or self.crm_reference_row is None:
             return table_row
