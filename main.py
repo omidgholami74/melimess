@@ -253,7 +253,10 @@ class DataProcessor(QMainWindow):
         self.table.setSelectionMode(QTableWidget.SelectionMode.ContiguousSelection)
         self.table.setAlternatingRowColors(True)
         self.table.horizontalHeader().setStretchLastSection(True)
-        self.table.verticalHeader().setVisible(False)
+        self.table.verticalHeader().setVisible(True)
+        self.table.verticalHeader().setDefaultSectionSize(25)
+        self.table.verticalHeader().setSectionsClickable(True)
+        
         splitter.addWidget(self.table)
         splitter.setSizes([350, 850]) # Slightly wider left panel for better UI
         main_layout.addWidget(splitter)
