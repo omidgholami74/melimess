@@ -152,9 +152,9 @@ class DataProcessor(QMainWindow):
         offset_ratio_layout.addWidget(QLabel("Ratio:"))
         offset_ratio_layout.addWidget(self.ratio_spin)
         fill_layout.addRow(offset_ratio_layout)
-        self.fill_button = QPushButton("Fill Empty Cells")
+        self.fill_button = QPushButton("Generate Random")
         self.fill_button.clicked.connect(self.fill_empty_cells)
-        self.fill_button.setToolTip("Fill empty or selected cells with random values in range")
+        self.fill_button.setToolTip("Generate random values for empty cells")
         fill_layout.addRow(self.fill_button)
         left_layout.addWidget(fill_group)
         # Connect spin boxes for real-time application
@@ -252,6 +252,7 @@ class DataProcessor(QMainWindow):
         self.table.verticalHeader().setVisible(True)
         self.table.verticalHeader().setDefaultSectionSize(25)
         self.table.verticalHeader().setSectionsClickable(True)
+        self.table.cellChanged.connect(self.on_cell_changed)
         
         splitter.addWidget(self.table)
         splitter.setSizes([350, 850]) # Slightly wider left panel for better UI
@@ -265,6 +266,7 @@ class DataProcessor(QMainWindow):
         self.header_row = None # Row 1: element names (هدر اصلی)
         self.reserved_rows = {}
         self.processed_columns = {}
+        self.base_columns = {}
         self.current_column_index = 0
         self.current_column_data = None
         self.fixed_column = None
@@ -294,6 +296,39 @@ class DataProcessor(QMainWindow):
                 self.paste_from_clipboard()
                 return True
         return super().eventFilter(source, event)
+    def on_cell_changed(self, row, col):
+        if self.all_processed_mode:
+            # For all mode, update processed_columns and set base to None if edited
+            if col < 1:
+                return
+            col_index = col
+            item = self.table.item(row, col)
+            text = item.text().strip() if item else ""
+            try:
+                val = float(text) if text else None
+            except ValueError:
+                val = text if text else None
+            num_before = sum(1 for r in [self.crm_reference_row] if r is not None and r < row)
+            actual_row = row - num_before
+            if actual_row < len(self.processed_columns.get(col_index, [])):
+                old_val = self.processed_columns[col_index][actual_row]
+                self.processed_columns[col_index][actual_row] = val
+                if old_val != val and col_index in self.base_columns and self.base_columns[col_index][actual_row] is not None:
+                    self.base_columns[col_index][actual_row] = None
+        else:
+            # For single column mode
+            if col != 2:
+                return
+            item = self.table.item(row, col)
+            text = item.text().strip() if item else ""
+            try:
+                val = float(text) if text else None
+            except ValueError:
+                val = text if text else None
+            old_val = self.current_column_data.at[row, 'Modified']
+            self.current_column_data.at[row, 'Modified'] = val
+            if old_val != val and self.current_column_data.at[row, 'Base'] is not None:
+                self.current_column_data.at[row, 'Base'] = None
     def paste_from_clipboard(self):
         clipboard = QApplication.clipboard()
         mime_data = clipboard.mimeData()
@@ -337,19 +372,24 @@ class DataProcessor(QMainWindow):
                 self.table.setItem(row, start_col, item)
             item.setText(str(val))
             
-            # --- FIXED LINE BELOW ---
             num_before = sum(1 for r in [self.crm_reference_row] if r is not None and r < row)
-            # -------------------------
-            
             actual_row = row - num_before
-            if actual_row < len(self.processed_columns.get(col_index, [])):
-                self.processed_columns[col_index][actual_row] = val
+            if self.all_processed_mode:
+                if actual_row < len(self.processed_columns.get(col_index, [])):
+                    self.processed_columns[col_index][actual_row] = val
+                    if col_index in self.base_columns:
+                        self.base_columns[col_index][actual_row] = None
+            else:
+                if actual_row < len(self.current_column_data):
+                    self.current_column_data.at[actual_row, 'Modified'] = val
+                    self.current_column_data.at[actual_row, 'Base'] = None
         self.status_bar.showMessage("Pasted from clipboard")
     def reset_data(self):
         self.df = None
         self.header_row = None
         self.reserved_rows = {}
         self.processed_columns = {}
+        self.base_columns = {}
         self.current_column_index = 0
         self.current_column_data = None
         self.fixed_column = None
@@ -421,9 +461,11 @@ class DataProcessor(QMainWindow):
         num_rows = len(self.fixed_column)
        
         modified = self.processed_columns.get(col_index, [None] * num_rows)
+        bases = self.base_columns.get(col_index, [None] * num_rows)
         self.current_column_data = pd.DataFrame({
             'Original': col_data,
-            'Modified': modified
+            'Modified': modified,
+            'Base': bases
         })
        
         self.remove_crm_reference_row()
@@ -487,6 +529,7 @@ class DataProcessor(QMainWindow):
         if self.all_processed_mode:
             return
         modified = []
+        bases = []
         for i in range(self.table.rowCount()):
             if self.crm_reference_row is not None and i == self.crm_reference_row:
                 continue
@@ -497,7 +540,9 @@ class DataProcessor(QMainWindow):
             except ValueError:
                 val = text if text else None
             modified.append(val)
+            bases.append(self.current_column_data.at[i, 'Base'])
         self.processed_columns[self.current_column_index] = modified
+        self.base_columns[self.current_column_index] = bases
         self.current_column_data['Modified'] = modified
     def check_all_columns_processed(self):
         num_columns = len(self.processing_df.columns) - 1 # excluding fixed column
@@ -549,26 +594,37 @@ class DataProcessor(QMainWindow):
         for i in range(len(self.current_column_data)):
             original = self.current_column_data.at[i, 'Original']
             modified = self.current_column_data.at[i, 'Modified']
-
-            if modified is not None:
-                continue  # Do not change filled cells
+            base = self.current_column_data.at[i, 'Base']
 
             if pd.isna(original) or not isinstance(original, (int, float)):
                 continue
 
-            rand_factor = random.uniform(min_val, max_val)
-            new_val = (original * rand_factor) + offset
-            new_val *= ratio
-            new_val = round(new_val, 2)
+            if base is not None:
+                # Regenerate for previous random-filled cells
+                rand_factor = random.uniform(min_val, max_val)
+                new_base = original * rand_factor
+                self.current_column_data.at[i, 'Base'] = new_base
+                new_val = (new_base * ratio) + offset
+                new_val = round(new_val, 2)
+                self.current_column_data.at[i, 'Modified'] = new_val
+                item = self.table.item(i, 2)
+                if item:
+                    item.setText(str(new_val))
+            elif modified is None:
+                # Fill new empty cells
+                rand_factor = random.uniform(min_val, max_val)
+                base = original * rand_factor
+                self.current_column_data.at[i, 'Base'] = base
+                new_val = (base * ratio) + offset
+                new_val = round(new_val, 2)
+                self.current_column_data.at[i, 'Modified'] = new_val
+                item = self.table.item(i, 2)
+                if not item:
+                    item = QTableWidgetItem()
+                    self.table.setItem(i, 2, item)
+                item.setText(str(new_val))
 
-            self.current_column_data.at[i, 'Modified'] = new_val
-            item = self.table.item(i, 2)
-            if not item:
-                item = QTableWidgetItem()
-                self.table.setItem(i, 2, item)
-            item.setText(str(new_val))
-
-        self.status_bar.showMessage("Filled empty cells")
+        self.status_bar.showMessage("Generated random values")
 
     def apply_ratio_offset_to_filled(self):
         if self.all_processed_mode or self.current_column_data is None:
@@ -578,18 +634,15 @@ class DataProcessor(QMainWindow):
         offset = self.offset_spin.value()
 
         for i in range(len(self.current_column_data)):
-            modified = self.current_column_data.at[i, 'Modified']
+            base = self.current_column_data.at[i, 'Base']
 
-            if modified is None or not isinstance(modified, (int, float)):
-                continue
-
-            new_val = (modified * ratio) + offset
-            new_val = round(new_val, 2)
-
-            self.current_column_data.at[i, 'Modified'] = new_val
-            item = self.table.item(i, 2)
-            if item:
-                item.setText(str(new_val))
+            if base is not None:
+                new_val = (base * ratio) + offset
+                new_val = round(new_val, 2)
+                self.current_column_data.at[i, 'Modified'] = new_val
+                item = self.table.item(i, 2)
+                if item:
+                    item.setText(str(new_val))
 
         self.status_bar.showMessage("Applied ratio and offset to filled cells")
 
@@ -882,7 +935,7 @@ class DataProcessor(QMainWindow):
     def get_table_row_from_original(self, orig_row):
         if not self.all_processed_mode or self.crm_reference_row is None:
             return orig_row
-        return orig_row + 1 if orig_row > self.crm_original_row else orig_row
+        return orig_row + 1 if orig_row >= self.crm_original_row else orig_row
     def get_original_row_from_table(self, table_row):
         if not self.all_processed_mode or self.crm_reference_row is None:
             return table_row
