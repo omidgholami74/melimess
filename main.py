@@ -674,39 +674,80 @@ class DataProcessor(QMainWindow):
                 self.check_duplicates(col_index)
         else:
             self.check_duplicates(col_data)
+
     def check_duplicates(self, col_index):
         table_col = 2 if not self.all_processed_mode else col_index
         selected_items = self.table.selectedItems()
         if not selected_items:
             self.status_bar.showMessage("No rows selected for duplicates")
             return
-       
-        selected_rows = set(item.row() for item in selected_items if item.column() == table_col and item.row() != self.crm_reference_row)
-        orig_selected_rows = {self.get_original_row_from_table(row) for row in selected_rows}
-       
-        originals = self.processing_df.iloc[:, col_index]
-        values = [originals[row] for row in orig_selected_rows
-                  if originals[row] is not None and isinstance(originals[row], (int, float))]
-       
-        if not values:
-            self.status_bar.showMessage("No valid values in selected rows")
+
+        # فقط سلول‌های ستون Modified
+        selected_rows = {
+            item.row() for item in selected_items
+            if item.column() == table_col and item.row() != self.crm_reference_row
+        }
+
+        if not selected_rows:
+            self.status_bar.showMessage("No valid cells selected in the target column")
             return
-       
+
+        # تبدیل به ایندکس اصلی در processing_df
+        orig_selected_rows = set()
+        for table_row in selected_rows:
+            if self.all_processed_mode and self.crm_reference_row is not None:
+                orig_row = table_row - 1 if table_row > self.crm_reference_row else table_row
+            else:
+                orig_row = table_row
+            orig_selected_rows.add(orig_row)
+
+        # استفاده از processed_columns (مقادیر Modified) به جای processing_df
+        modified_values = self.processed_columns.get(col_index, [])
+        values = []
+        for orig_row in orig_selected_rows:
+            if orig_row < len(modified_values):
+                val = modified_values[orig_row]
+                if val is not None and isinstance(val, (int, float)):
+                    values.append(val)
+
+        if not values:
+            self.status_bar.showMessage("No valid numeric values in selected modified cells")
+            return
+
+        print("check duplicate (Modified): ", values)
         mean_val = sum(values) / len(values)
         dup_range = self.global_dup_range_spin.value()
         light_yellow = QColor(255, 255, 150)
         light_red = QColor(255, 180, 180)
+
+        # رنگ زرد برای همه سطرهای انتخاب‌شده
         for orig_row in orig_selected_rows:
             table_row = self.get_table_row_from_original(orig_row)
-            self.table.item(table_row, table_col).setBackground(QBrush(light_yellow))
-            self.table.item(table_row, 0).setBackground(QBrush(light_yellow))
+            if table_row < self.table.rowCount():
+                item = self.table.item(table_row, table_col)
+                fixed_item = self.table.item(table_row, 0)
+                if item:
+                    item.setBackground(QBrush(light_yellow))
+                if fixed_item:
+                    fixed_item.setBackground(QBrush(light_yellow))
+
+        # رنگ قرمز برای مقادیر خارج از محدوده
         for orig_row in orig_selected_rows:
-            val = originals[orig_row]
+            if orig_row >= len(modified_values):
+                continue
+            val = modified_values[orig_row]
             if val is not None and isinstance(val, (int, float)) and abs(val - mean_val) > mean_val * dup_range:
                 table_row = self.get_table_row_from_original(orig_row)
-                self.table.item(table_row, table_col).setBackground(QBrush(light_red))
-                self.table.item(table_row, 0).setBackground(QBrush(light_red))
-        self.status_bar.showMessage("Checked duplicates")
+                if table_row < self.table.rowCount():
+                    item = self.table.item(table_row, table_col)
+                    fixed_item = self.table.item(table_row, 0)
+                    if item:
+                        item.setBackground(QBrush(light_red))
+                    if fixed_item:
+                        fixed_item.setBackground(QBrush(light_red))
+
+        self.status_bar.showMessage(f"Checked duplicates: {len(values)} values")
+
     def global_fix_duplicates(self):
         col_data = self.column_combo.currentData()
         if col_data is None:
@@ -953,10 +994,16 @@ class DataProcessor(QMainWindow):
                     if item:
                         item.setText(new_val)
         self.status_bar.showMessage(f"Applied limits to column: {self.get_element_name(col_index)}")
+
     def get_table_row_from_original(self, orig_row):
-        if not self.all_processed_mode or self.crm_reference_row is None:
+        if not self.all_processed_mode:
             return orig_row
-        return orig_row + 1 if orig_row > self.crm_original_row else orig_row
+        if self.crm_reference_row is None:
+            return orig_row
+        # در حالت all_processed، همه سطرهای بعد از crm_original_row یک واحد بالا میان
+        shift = 1 if orig_row > self.crm_original_row else 0
+        return orig_row + shift
+
     def get_original_row_from_table(self, table_row):
         if not self.all_processed_mode or self.crm_reference_row is None:
             return table_row
