@@ -152,6 +152,9 @@ class DataProcessor(QMainWindow):
         offset_ratio_layout.addWidget(QLabel("Ratio:"))
         offset_ratio_layout.addWidget(self.ratio_spin)
         fill_layout.addRow(offset_ratio_layout)
+        self.apply_to_manual_checkbox = QCheckBox("Apply to manual entries")
+        self.apply_to_manual_checkbox.setChecked(False)
+        fill_layout.addRow(self.apply_to_manual_checkbox)
         self.fill_button = QPushButton("Generate Random")
         self.fill_button.clicked.connect(self.fill_empty_cells)
         self.fill_button.setToolTip("Generate random values for empty cells")
@@ -635,9 +638,17 @@ class DataProcessor(QMainWindow):
 
         for i in range(len(self.current_column_data)):
             base = self.current_column_data.at[i, 'Base']
+            modified = self.current_column_data.at[i, 'Modified']
 
             if base is not None:
                 new_val = (base * ratio) + offset
+                new_val = round(new_val, 2)
+                self.current_column_data.at[i, 'Modified'] = new_val
+                item = self.table.item(i, 2)
+                if item:
+                    item.setText(str(new_val))
+            elif self.apply_to_manual_checkbox.isChecked() and modified is not None and isinstance(modified, (int, float)):
+                new_val = (modified * ratio) + offset
                 new_val = round(new_val, 2)
                 self.current_column_data.at[i, 'Modified'] = new_val
                 item = self.table.item(i, 2)
@@ -935,7 +946,7 @@ class DataProcessor(QMainWindow):
     def get_table_row_from_original(self, orig_row):
         if not self.all_processed_mode or self.crm_reference_row is None:
             return orig_row
-        return orig_row + 1 if orig_row >= self.crm_original_row else orig_row
+        return orig_row + 1 if orig_row > self.crm_original_row else orig_row
     def get_original_row_from_table(self, table_row):
         if not self.all_processed_mode or self.crm_reference_row is None:
             return table_row
